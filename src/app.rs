@@ -235,7 +235,9 @@ impl Render for DockerApp {
         let task_bar = self.render_task_bar(cx);
 
         // Get colors after mutable borrows are done
-        let background = cx.theme().colors.background;
+        let colors = &cx.theme().colors;
+        let background = colors.background;
+        let border = colors.border;
 
         v_flex()
             .size_full()
@@ -247,7 +249,16 @@ impl Render for DockerApp {
                     .flex_1()
                     .w_full()
                     .overflow_hidden()
-                    .child(div().w(px(220.)).h_full().flex_shrink_0().overflow_hidden().child(sidebar))
+                    .child(
+                        div()
+                            .w(px(220.))
+                            .h_full()
+                            .flex_shrink_0()
+                            .overflow_hidden()
+                            .border_r_1()
+                            .border_color(border)
+                            .child(sidebar),
+                    )
                     .child(div().flex_1().h_full().overflow_hidden().child(content)),
             )
             // Task bar at bottom (if any running tasks)
