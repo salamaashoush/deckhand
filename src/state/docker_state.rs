@@ -5,6 +5,8 @@ use crate::docker::{ContainerInfo, ImageInfo, NetworkInfo, VolumeInfo};
 
 use super::app_state::{CurrentView, MachineTabState, SelectedItem};
 
+use crate::docker::VolumeFileEntry;
+
 /// Event emitted when docker state changes
 #[derive(Clone, Debug)]
 pub enum StateChanged {
@@ -16,6 +18,15 @@ pub enum StateChanged {
     SelectionChanged,
     ViewChanged,
     Loading(bool),
+    VolumeFilesLoaded {
+        volume_name: String,
+        path: String,
+        files: Vec<VolumeFileEntry>,
+    },
+    VolumeFilesError {
+        volume_name: String,
+        error: String,
+    },
 }
 
 /// Global docker state - all views subscribe to this

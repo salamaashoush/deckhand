@@ -17,6 +17,7 @@ use crate::state::{docker_state, DockerState, StateChanged};
 /// Volume list events emitted to parent
 pub enum VolumeListEvent {
     Selected(VolumeInfo),
+    NewVolume,
 }
 
 /// Delegate for the volume list
@@ -281,7 +282,10 @@ impl Render for VolumeList {
                         Button::new("add")
                             .icon(Icon::new(AppIcon::Plus))
                             .ghost()
-                            .compact(),
+                            .compact()
+                            .on_click(cx.listener(|_this, _ev, _window, cx| {
+                                cx.emit(VolumeListEvent::NewVolume);
+                            })),
                     ),
             );
 

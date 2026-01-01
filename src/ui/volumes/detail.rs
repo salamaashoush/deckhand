@@ -10,16 +10,36 @@ use gpui_component::{
 use std::rc::Rc;
 
 use crate::assets::AppIcon;
-use crate::docker::VolumeInfo;
+use crate::docker::{VolumeFileEntry, VolumeInfo};
 
 type VolumeActionCallback = Rc<dyn Fn(&str, &mut Window, &mut App) + 'static>;
 type TabChangeCallback = Rc<dyn Fn(&usize, &mut Window, &mut App) + 'static>;
+type FileNavigateCallback = Rc<dyn Fn(&str, &mut Window, &mut App) + 'static>;
+
+/// State for volume detail tabs
+#[derive(Debug, Clone, Default)]
+pub struct VolumeTabState {
+    pub current_path: String,
+    pub files: Vec<VolumeFileEntry>,
+    pub files_loading: bool,
+}
+
+impl VolumeTabState {
+    pub fn new() -> Self {
+        Self {
+            current_path: "/".to_string(),
+            ..Default::default()
+        }
+    }
+}
 
 pub struct VolumeDetail {
     volume: Option<VolumeInfo>,
     active_tab: usize,
+    volume_state: Option<VolumeTabState>,
     on_delete: Option<VolumeActionCallback>,
     on_tab_change: Option<TabChangeCallback>,
+    on_navigate_path: Option<FileNavigateCallback>,
 }
 
 impl VolumeDetail {
@@ -27,8 +47,10 @@ impl VolumeDetail {
         Self {
             volume: None,
             active_tab: 0,
+            volume_state: None,
             on_delete: None,
             on_tab_change: None,
+            on_navigate_path: None,
         }
     }
 
@@ -39,6 +61,11 @@ impl VolumeDetail {
 
     pub fn active_tab(mut self, tab: usize) -> Self {
         self.active_tab = tab;
+        self
+    }
+
+    pub fn volume_state(mut self, state: VolumeTabState) -> Self {
+        self.volume_state = Some(state);
         self
     }
 
@@ -55,6 +82,14 @@ impl VolumeDetail {
         F: Fn(&usize, &mut Window, &mut App) + 'static,
     {
         self.on_tab_change = Some(Rc::new(callback));
+        self
+    }
+
+    pub fn on_navigate_path<F>(mut self, callback: F) -> Self
+    where
+        F: Fn(&str, &mut Window, &mut App) + 'static,
+    {
+        self.on_navigate_path = Some(Rc::new(callback));
         self
     }
 
@@ -106,13 +141,6 @@ impl VolumeDetail {
             .p(px(16.))
             .gap(px(12.))
             .child(self.render_section(None, basic_info, cx))
-            // Action buttons
-            .child(
-                v_flex()
-                    .gap(px(1.))
-                    .child(self.render_action_row("Export", IconName::ArrowUp, cx))
-                    .child(self.render_action_row("Clone", IconName::Copy, cx)),
-            )
             // Labels section if not empty
             .when(!volume.labels.is_empty(), |el| {
                 el.child(self.render_labels_section(volume, cx))
@@ -201,34 +229,6 @@ impl VolumeDetail {
         row
     }
 
-    fn render_action_row(&self, label: &str, icon: IconName, cx: &App) -> gpui::Div {
-        let colors = &cx.theme().colors;
-
-        h_flex()
-            .w_full()
-            .px(px(16.))
-            .py(px(12.))
-            .items_center()
-            .justify_between()
-            .bg(colors.background)
-            .rounded(px(8.))
-            .cursor_pointer()
-            .hover(|s| s.bg(colors.sidebar))
-            .child(
-                h_flex()
-                    .gap(px(12.))
-                    .items_center()
-                    .child(Icon::new(icon).text_color(colors.secondary_foreground))
-                    .child(
-                        div()
-                            .text_sm()
-                            .text_color(colors.foreground)
-                            .child(label.to_string()),
-                    ),
-            )
-            .child(Icon::new(IconName::ChevronRight).text_color(colors.muted_foreground))
-    }
-
     fn render_labels_section(&self, volume: &VolumeInfo, cx: &App) -> gpui::Div {
         let colors = &cx.theme().colors;
 
@@ -307,6 +307,171 @@ impl VolumeDetail {
             )
     }
 
+    fn render_files_tab(&self, cx: &App) -> gpui::Div {
+        let colors = &cx.theme().colors;
+
+        let current_path = self
+            .volume_state
+            .as_ref()
+            .map(|s| s.current_path.clone())
+            .unwrap_or_else(|| "/".to_string());
+
+        let files = self
+            .volume_state
+            .as_ref()
+            .map(|s| s.files.clone())
+            .unwrap_or_default();
+
+        let is_loading = self
+            .volume_state
+            .as_ref()
+            .map(|s| s.files_loading)
+            .unwrap_or(false);
+
+        let on_navigate = self.on_navigate_path.clone();
+        let on_navigate_up = self.on_navigate_path.clone();
+
+        // Calculate parent path
+        let parent_path = if current_path == "/" {
+            "/".to_string()
+        } else {
+            let parts: Vec<&str> = current_path.trim_end_matches('/').split('/').collect();
+            if parts.len() <= 2 {
+                "/".to_string()
+            } else {
+                parts[..parts.len() - 1].join("/")
+            }
+        };
+
+        let mut file_list = v_flex().gap(px(2.));
+
+        for file in files.iter() {
+            let file_path = file.path.clone();
+            let is_dir = file.is_dir;
+            let cb = on_navigate.clone();
+
+            file_list = file_list.child(self.render_file_entry(file, cx).when(is_dir, |el| {
+                el.cursor_pointer().when_some(cb, move |el, cb| {
+                    let path = file_path.clone();
+                    el.on_mouse_down(gpui::MouseButton::Left, move |_ev, window, cx| {
+                        cb(&path, window, cx);
+                    })
+                })
+            }));
+        }
+
+        v_flex()
+            .flex_1()
+            .w_full()
+            .p(px(16.))
+            .gap(px(8.))
+            .child(
+                h_flex()
+                    .items_center()
+                    .gap(px(8.))
+                    .child(
+                        Button::new("up")
+                            .icon(IconName::ArrowUp)
+                            .ghost()
+                            .compact()
+                            .when_some(on_navigate_up, move |btn, cb| {
+                                let path = parent_path.clone();
+                                btn.on_click(move |_ev, window, cx| {
+                                    cb(&path, window, cx);
+                                })
+                            }),
+                    )
+                    .child(
+                        div()
+                            .flex_1()
+                            .px(px(12.))
+                            .py(px(8.))
+                            .bg(colors.background)
+                            .rounded(px(6.))
+                            .text_sm()
+                            .text_color(colors.secondary_foreground)
+                            .child(current_path),
+                    ),
+            )
+            .child(
+                div()
+                    .flex_1()
+                    .w_full()
+                    .bg(colors.background)
+                    .rounded(px(8.))
+                    .p(px(8.))
+                    .overflow_y_scrollbar()
+                    .when(is_loading, |el| {
+                        el.child(
+                            div()
+                                .p(px(16.))
+                                .text_sm()
+                                .text_color(colors.muted_foreground)
+                                .child("Loading..."),
+                        )
+                    })
+                    .when(!is_loading && files.is_empty(), |el| {
+                        el.child(
+                            div()
+                                .p(px(16.))
+                                .text_sm()
+                                .text_color(colors.muted_foreground)
+                                .child("Volume is empty"),
+                        )
+                    })
+                    .when(!is_loading && !files.is_empty(), |el| el.child(file_list)),
+            )
+    }
+
+    fn render_file_entry(&self, file: &VolumeFileEntry, cx: &App) -> gpui::Div {
+        let colors = &cx.theme().colors;
+        let icon = if file.is_dir {
+            IconName::Folder
+        } else if file.is_symlink {
+            IconName::ExternalLink
+        } else {
+            IconName::File
+        };
+
+        let icon_color = if file.is_dir {
+            colors.warning
+        } else if file.is_symlink {
+            colors.info
+        } else {
+            colors.secondary_foreground
+        };
+
+        h_flex()
+            .w_full()
+            .px(px(12.))
+            .py(px(8.))
+            .rounded(px(4.))
+            .items_center()
+            .gap(px(10.))
+            .hover(|s| s.bg(colors.sidebar))
+            .child(Icon::new(icon).text_color(icon_color))
+            .child(
+                div()
+                    .flex_1()
+                    .text_sm()
+                    .text_color(colors.foreground)
+                    .child(file.name.clone()),
+            )
+            .child(
+                div()
+                    .text_xs()
+                    .text_color(colors.muted_foreground)
+                    .child(file.display_size()),
+            )
+            .child(
+                div()
+                    .text_xs()
+                    .text_color(colors.muted_foreground)
+                    .w(px(80.))
+                    .child(file.permissions.clone()),
+            )
+    }
+
     pub fn render(self, _window: &mut Window, cx: &App) -> gpui::AnyElement {
         let colors = &cx.theme().colors;
 
@@ -320,7 +485,7 @@ impl VolumeDetail {
         let on_delete = self.on_delete.clone();
         let on_tab_change = self.on_tab_change.clone();
 
-        let tabs = vec!["Info"];
+        let tabs = vec!["Info", "Files"];
 
         // Toolbar with tabs and actions
         let toolbar = h_flex()
@@ -365,6 +530,7 @@ impl VolumeDetail {
         // Content based on active tab
         let content = match self.active_tab {
             0 => self.render_info_tab(volume, cx),
+            1 => self.render_files_tab(cx),
             _ => self.render_info_tab(volume, cx),
         };
 

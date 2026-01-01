@@ -1,6 +1,8 @@
 use anyhow::Result;
+use bollard::container::{Config, CreateContainerOptions, LogsOptions, RemoveContainerOptions};
 use bollard::volume::{ListVolumesOptions, RemoveVolumeOptions};
 use chrono::{DateTime, Utc};
+use futures::StreamExt;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 
@@ -37,6 +39,26 @@ impl VolumeInfo {
             .as_ref()
             .map(|u| u.ref_count > 0)
             .unwrap_or(false)
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct VolumeFileEntry {
+    pub name: String,
+    pub path: String,
+    pub is_dir: bool,
+    pub is_symlink: bool,
+    pub size: u64,
+    pub permissions: String,
+}
+
+impl VolumeFileEntry {
+    pub fn display_size(&self) -> String {
+        if self.is_dir {
+            "-".to_string()
+        } else {
+            bytesize::ByteSize(self.size).to_string()
+        }
     }
 }
 
@@ -90,10 +112,23 @@ impl DockerClient {
     }
 
     pub async fn create_volume(&self, name: &str) -> Result<VolumeInfo> {
+        self.create_volume_with_opts(name, "local", vec![]).await
+    }
+
+    pub async fn create_volume_with_opts(
+        &self,
+        name: &str,
+        driver: &str,
+        labels: Vec<(String, String)>,
+    ) -> Result<VolumeInfo> {
         let docker = self.client()?;
+
+        let labels_map: HashMap<String, String> = labels.into_iter().collect();
 
         let config = bollard::volume::CreateVolumeOptions {
             name: name.to_string(),
+            driver: driver.to_string(),
+            labels: labels_map,
             ..Default::default()
         };
 
@@ -115,5 +150,130 @@ impl DockerClient {
             status: None,
             usage_data: None,
         })
+    }
+
+    /// List files in a volume by running a temporary container with ls command
+    /// Docker API doesn't expose direct volume file browsing, so we create a
+    /// lightweight container that runs ls and exits immediately.
+    pub async fn list_volume_files(&self, volume_name: &str, path: &str) -> Result<Vec<VolumeFileEntry>> {
+        let docker = self.client()?;
+
+        // Normalize path - volume is mounted at /data
+        let normalized_path = if path.is_empty() || path == "/" {
+            "/data".to_string()
+        } else {
+            format!("/data{}", path.trim_end_matches('/'))
+        };
+
+        // Create a temporary container that runs ls command and exits
+        // Use timestamp for unique name
+        let timestamp = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_nanos();
+        let container_name = format!("docker-ui-vol-{}", timestamp);
+
+        let host_config = bollard::models::HostConfig {
+            binds: Some(vec![format!("{}:/data:ro", volume_name)]),
+            ..Default::default()
+        };
+
+        let config = Config {
+            image: Some("alpine:latest"),
+            cmd: Some(vec!["ls", "-la", &normalized_path]),
+            host_config: Some(host_config),
+            tty: Some(false),
+            attach_stdout: Some(true),
+            attach_stderr: Some(true),
+            ..Default::default()
+        };
+
+        let options = CreateContainerOptions {
+            name: container_name.clone(),
+            ..Default::default()
+        };
+
+        // Create and start container (it will run ls and exit immediately)
+        docker.create_container(Some(options), config).await?;
+        docker.start_container::<String>(&container_name, None).await?;
+
+        // Wait for container to finish
+        let mut wait_stream = docker.wait_container::<String>(&container_name, None);
+        while let Some(_) = wait_stream.next().await {}
+
+        // Get the logs (output of ls command)
+        let log_options = LogsOptions::<String> {
+            stdout: true,
+            stderr: true,
+            ..Default::default()
+        };
+
+        let mut logs_stream = docker.logs(&container_name, Some(log_options));
+        let mut output = String::new();
+        while let Some(chunk) = logs_stream.next().await {
+            if let Ok(log) = chunk {
+                output.push_str(&log.to_string());
+            }
+        }
+
+        // Remove the container
+        let _ = docker.remove_container(
+            &container_name,
+            Some(RemoveContainerOptions {
+                force: true,
+                ..Default::default()
+            }),
+        ).await;
+
+        // Parse the output
+        let base_path = if path.is_empty() || path == "/" {
+            "/".to_string()
+        } else {
+            path.trim_end_matches('/').to_string()
+        };
+
+        let mut entries = Vec::new();
+        for line in output.lines().skip(1) {
+            // Skip "total" line
+            let parts: Vec<&str> = line.split_whitespace().collect();
+            if parts.len() >= 9 {
+                let permissions = parts[0].to_string();
+                let size: u64 = parts[4].parse().unwrap_or(0);
+                let name = parts[8..].join(" ");
+
+                if name == "." || name == ".." {
+                    continue;
+                }
+
+                let is_dir = permissions.starts_with('d');
+                let is_symlink = permissions.starts_with('l');
+
+                let file_path = if base_path == "/" {
+                    format!("/{}", name)
+                } else {
+                    format!("{}/{}", base_path, name)
+                };
+
+                entries.push(VolumeFileEntry {
+                    name,
+                    path: file_path,
+                    is_dir,
+                    is_symlink,
+                    size,
+                    permissions,
+                });
+            }
+        }
+
+        // Sort: directories first, then by name
+        entries.sort_by(|a, b| {
+            match (a.is_dir, b.is_dir) {
+                (true, false) => std::cmp::Ordering::Less,
+                (false, true) => std::cmp::Ordering::Greater,
+                _ => a.name.cmp(&b.name),
+            }
+        });
+
+        Ok(entries)
     }
 }
