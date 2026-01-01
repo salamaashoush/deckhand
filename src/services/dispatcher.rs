@@ -643,6 +643,90 @@ pub fn refresh_containers(cx: &mut App) {
     .detach();
 }
 
+// ============================================================================
+// VOLUME OPERATIONS
+// ============================================================================
+
+pub fn delete_volume(name: String, cx: &mut App) {
+    let task_id = start_task(cx, "delete_volume", "Deleting volume...".to_string());
+    let disp = dispatcher(cx);
+    let client = docker_client();
+
+    let tokio_task = Tokio::spawn(cx, async move {
+        let guard = client.read().await;
+        let docker = guard
+            .as_ref()
+            .ok_or_else(|| anyhow::anyhow!("Docker client not connected"))?;
+        docker.remove_volume(&name, true).await
+    });
+
+    cx.spawn(async move |cx| {
+        let result = tokio_task.await;
+        cx.update(|cx| {
+            match result {
+                Ok(Ok(_)) => {
+                    complete_task(cx, task_id);
+                    disp.update(cx, |_, cx| {
+                        cx.emit(DispatcherEvent::TaskCompleted {
+                            name: "delete_volume".to_string(),
+                            message: "Volume deleted".to_string(),
+                        });
+                    });
+                    refresh_volumes(cx);
+                }
+                Ok(Err(e)) => {
+                    fail_task(cx, task_id, e.to_string());
+                    disp.update(cx, |_, cx| {
+                        cx.emit(DispatcherEvent::TaskFailed {
+                            name: "delete_volume".to_string(),
+                            error: e.to_string(),
+                        });
+                    });
+                }
+                Err(e) => {
+                    fail_task(cx, task_id, e.to_string());
+                    disp.update(cx, |_, cx| {
+                        cx.emit(DispatcherEvent::TaskFailed {
+                            name: "delete_volume".to_string(),
+                            error: e.to_string(),
+                        });
+                    });
+                }
+            }
+        })
+    })
+    .detach();
+}
+
+pub fn refresh_volumes(cx: &mut App) {
+    let state = docker_state(cx);
+    let client = docker_client();
+
+    let tokio_task = Tokio::spawn(cx, async move {
+        let guard = client.read().await;
+        match guard.as_ref() {
+            Some(docker) => docker.list_volumes().await.unwrap_or_default(),
+            None => vec![],
+        }
+    });
+
+    cx.spawn(async move |cx| {
+        let result = tokio_task.await;
+        let volumes = result.unwrap_or_default();
+        cx.update(|cx| {
+            state.update(cx, |state, cx| {
+                state.set_volumes(volumes);
+                cx.emit(StateChanged::VolumesUpdated);
+            });
+        })
+    })
+    .detach();
+}
+
+// ============================================================================
+// MACHINE OPERATIONS
+// ============================================================================
+
 pub fn refresh_machines(cx: &mut App) {
     let state = docker_state(cx);
 

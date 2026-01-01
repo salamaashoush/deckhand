@@ -10,12 +10,14 @@ use crate::services::task_manager;
 use crate::state::{docker_state, CurrentView, DockerState, StateChanged};
 use crate::ui::containers::ContainersView;
 use crate::ui::machines::MachinesView;
+use crate::ui::volumes::VolumesView;
 
 /// Main application - only handles layout and view switching
 pub struct DockerApp {
     docker_state: Entity<DockerState>,
     machines_view: Entity<MachinesView>,
     containers_view: Entity<ContainersView>,
+    volumes_view: Entity<VolumesView>,
 }
 
 impl DockerApp {
@@ -35,11 +37,13 @@ impl DockerApp {
         // Create self-contained views
         let machines_view = cx.new(|cx| MachinesView::new(window, cx));
         let containers_view = cx.new(|cx| ContainersView::new(window, cx));
+        let volumes_view = cx.new(|cx| VolumesView::new(window, cx));
 
         Self {
             docker_state,
             machines_view,
             containers_view,
+            volumes_view,
         }
     }
 
@@ -128,6 +132,7 @@ impl DockerApp {
         match state.current_view {
             CurrentView::Machines => div().size_full().child(self.machines_view.clone()),
             CurrentView::Containers => div().size_full().child(self.containers_view.clone()),
+            CurrentView::Volumes => div().size_full().child(self.volumes_view.clone()),
             _ => {
                 // Placeholder for views not yet implemented
                 let colors = &cx.theme().colors;
