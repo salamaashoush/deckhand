@@ -10,7 +10,7 @@ use std::time::Duration;
 
 use crate::assets::AppIcon;
 use crate::docker::{AggregateStats, ContainerStats};
-use crate::services::{docker_client, Tokio};
+use crate::services;
 
 /// Activity monitor showing container resource usage
 pub struct ActivityMonitorView {
@@ -27,17 +27,15 @@ pub struct ActivityMonitorView {
 impl ActivityMonitorView {
     pub fn new(window: &mut Window, cx: &mut Context<Self>) -> Self {
         // Start periodic refresh
-        cx.spawn(async move |this, mut cx| {
+        cx.spawn(async move |this, cx| {
             loop {
-                // Refresh stats
-                let _ = cx.update(|cx| {
-                    this.update(cx, |this, cx| {
-                        this.refresh_stats(cx);
-                    })
-                });
-
                 // Wait 2 seconds before next refresh
                 Timer::after(Duration::from_secs(2)).await;
+
+                // Refresh stats
+                let _ = this.update(cx, |this, cx| {
+                    this.refresh_stats(cx);
+                });
             }
         })
         .detach();
@@ -58,46 +56,49 @@ impl ActivityMonitorView {
     }
 
     fn refresh_stats(&mut self, cx: &mut Context<Self>) {
-        let client = docker_client();
+        let tokio_handle = services::Tokio::runtime_handle();
+        let client = services::docker_client();
 
-        let tokio_task = Tokio::spawn(cx, async move {
-            let guard = client.read().await;
-            let docker = guard
-                .as_ref()
-                .ok_or_else(|| anyhow::anyhow!("Docker client not connected"))?;
-            docker.get_all_container_stats().await
-        });
-
-        cx.spawn(async move |this, mut cx| {
-            let result = tokio_task.await;
-            let _ = cx.update(|cx| {
-                this.update(cx, |this, cx| {
-                    this.is_loading = false;
-                    if let Ok(Ok(stats)) = result {
-                        // Update history
-                        this.cpu_history.push(stats.total_cpu_percent);
-                        this.memory_history.push(stats.total_memory);
-                        this.network_history.push(stats.total_network_rx + stats.total_network_tx);
-                        this.disk_history.push(stats.total_block_read + stats.total_block_write);
-
-                        // Keep only last 60 samples
-                        if this.cpu_history.len() > 60 {
-                            this.cpu_history.remove(0);
+        cx.spawn(async move |this, cx| {
+            let stats = cx
+                .background_executor()
+                .spawn(async move {
+                    tokio_handle.block_on(async {
+                        let guard = client.read().await;
+                        match guard.as_ref() {
+                            Some(docker) => docker.get_all_container_stats().await.ok(),
+                            None => None,
                         }
-                        if this.memory_history.len() > 60 {
-                            this.memory_history.remove(0);
-                        }
-                        if this.network_history.len() > 60 {
-                            this.network_history.remove(0);
-                        }
-                        if this.disk_history.len() > 60 {
-                            this.disk_history.remove(0);
-                        }
-
-                        this.stats = stats;
-                    }
-                    cx.notify();
+                    })
                 })
+                .await;
+
+            let _ = this.update(cx, |this, cx| {
+                this.is_loading = false;
+                if let Some(stats) = stats {
+                    // Update history
+                    this.cpu_history.push(stats.total_cpu_percent);
+                    this.memory_history.push(stats.total_memory);
+                    this.network_history.push(stats.total_network_rx + stats.total_network_tx);
+                    this.disk_history.push(stats.total_block_read + stats.total_block_write);
+
+                    // Keep only last 60 samples
+                    if this.cpu_history.len() > 60 {
+                        this.cpu_history.remove(0);
+                    }
+                    if this.memory_history.len() > 60 {
+                        this.memory_history.remove(0);
+                    }
+                    if this.network_history.len() > 60 {
+                        this.network_history.remove(0);
+                    }
+                    if this.disk_history.len() > 60 {
+                        this.disk_history.remove(0);
+                    }
+
+                    this.stats = stats;
+                }
+                cx.notify();
             });
         })
         .detach();
