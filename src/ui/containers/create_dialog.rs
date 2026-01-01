@@ -3,13 +3,14 @@ use gpui::{
     ParentElement, Render, SharedString, Styled, Window,
 };
 use gpui_component::{
+    button::{Button, ButtonVariants},
     h_flex,
     input::{Input, InputState},
     label::Label,
     scroll::ScrollableElement,
     select::{Select, SelectItem, SelectState},
     switch::Switch,
-    v_flex, IndexPath, Sizable,
+    v_flex, IconName, IndexPath, Sizable,
 };
 
 /// Platform options for container
@@ -114,6 +115,29 @@ impl SelectItem for RestartPolicy {
     }
 }
 
+/// Port mapping configuration
+#[derive(Debug, Clone, Default)]
+pub struct PortMapping {
+    pub host_port: String,
+    pub container_port: String,
+    pub protocol: String, // tcp or udp
+}
+
+/// Volume mount configuration
+#[derive(Debug, Clone, Default)]
+pub struct VolumeMount {
+    pub host_path: String,
+    pub container_path: String,
+    pub read_only: bool,
+}
+
+/// Environment variable
+#[derive(Debug, Clone, Default)]
+pub struct EnvVar {
+    pub key: String,
+    pub value: String,
+}
+
 /// Options for creating a new container
 #[derive(Debug, Clone, Default)]
 pub struct CreateContainerOptions {
@@ -129,6 +153,11 @@ pub struct CreateContainerOptions {
     pub read_only: bool,
     pub docker_init: bool,
     pub start_after_create: bool,
+    // New fields
+    pub env_vars: Vec<(String, String)>,
+    pub ports: Vec<(String, String, String)>, // (host_port, container_port, protocol)
+    pub volumes: Vec<(String, String, bool)>, // (host_path, container_path, read_only)
+    pub network: Option<String>,
 }
 
 impl CreateContainerOptions {
@@ -186,6 +215,40 @@ impl CreateContainerOptions {
             args.push("--init".to_string());
         }
 
+        // Environment variables
+        for (key, value) in &self.env_vars {
+            args.push("-e".to_string());
+            args.push(format!("{}={}", key, value));
+        }
+
+        // Port mappings
+        for (host, container, protocol) in &self.ports {
+            args.push("-p".to_string());
+            if protocol == "udp" {
+                args.push(format!("{}:{}/udp", host, container));
+            } else {
+                args.push(format!("{}:{}", host, container));
+            }
+        }
+
+        // Volume mounts
+        for (host, container, ro) in &self.volumes {
+            args.push("-v".to_string());
+            if *ro {
+                args.push(format!("{}:{}:ro", host, container));
+            } else {
+                args.push(format!("{}:{}", host, container));
+            }
+        }
+
+        // Network
+        if let Some(ref network) = self.network {
+            if !network.is_empty() && network != "default" {
+                args.push("--network".to_string());
+                args.push(network.clone());
+            }
+        }
+
         args.push(self.image.clone());
 
         if let Some(ref cmd) = self.command {
@@ -199,9 +262,16 @@ impl CreateContainerOptions {
     }
 }
 
+/// Input row for ports/volumes/env vars
+struct InputRow {
+    input1: Entity<InputState>,
+    input2: Entity<InputState>,
+}
+
 /// Dialog for creating a new container
 pub struct CreateContainerDialog {
     focus_handle: FocusHandle,
+    active_tab: usize,
 
     // Input states - created lazily
     image_input: Option<Entity<InputState>>,
@@ -219,6 +289,26 @@ pub struct CreateContainerDialog {
     privileged: bool,
     read_only: bool,
     docker_init: bool,
+
+    // Environment variables
+    env_vars: Vec<EnvVar>,
+    env_key_input: Option<Entity<InputState>>,
+    env_value_input: Option<Entity<InputState>>,
+
+    // Port mappings
+    ports: Vec<PortMapping>,
+    port_host_input: Option<Entity<InputState>>,
+    port_container_input: Option<Entity<InputState>>,
+    port_protocol_tcp: bool,
+
+    // Volume mounts
+    volumes: Vec<VolumeMount>,
+    volume_host_input: Option<Entity<InputState>>,
+    volume_container_input: Option<Entity<InputState>>,
+    volume_readonly: bool,
+
+    // Network
+    network_input: Option<Entity<InputState>>,
 }
 
 impl CreateContainerDialog {
@@ -227,6 +317,7 @@ impl CreateContainerDialog {
 
         Self {
             focus_handle,
+            active_tab: 0,
             image_input: None,
             name_input: None,
             command_input: None,
@@ -238,6 +329,18 @@ impl CreateContainerDialog {
             privileged: false,
             read_only: false,
             docker_init: false,
+            env_vars: Vec::new(),
+            env_key_input: None,
+            env_value_input: None,
+            ports: Vec::new(),
+            port_host_input: None,
+            port_container_input: None,
+            port_protocol_tcp: true,
+            volumes: Vec::new(),
+            volume_host_input: None,
+            volume_container_input: None,
+            volume_readonly: false,
+            network_input: None,
         }
     }
 
@@ -281,6 +384,49 @@ impl CreateContainerDialog {
         if self.restart_policy_select.is_none() {
             self.restart_policy_select = Some(cx.new(|cx| {
                 SelectState::new(RestartPolicy::all(), Some(IndexPath::new(0)), window, cx)
+            }));
+        }
+
+        // Env var inputs
+        if self.env_key_input.is_none() {
+            self.env_key_input = Some(cx.new(|cx| {
+                InputState::new(window, cx).placeholder("KEY")
+            }));
+        }
+        if self.env_value_input.is_none() {
+            self.env_value_input = Some(cx.new(|cx| {
+                InputState::new(window, cx).placeholder("VALUE")
+            }));
+        }
+
+        // Port inputs
+        if self.port_host_input.is_none() {
+            self.port_host_input = Some(cx.new(|cx| {
+                InputState::new(window, cx).placeholder("Host port")
+            }));
+        }
+        if self.port_container_input.is_none() {
+            self.port_container_input = Some(cx.new(|cx| {
+                InputState::new(window, cx).placeholder("Container port")
+            }));
+        }
+
+        // Volume inputs
+        if self.volume_host_input.is_none() {
+            self.volume_host_input = Some(cx.new(|cx| {
+                InputState::new(window, cx).placeholder("Host path or volume name")
+            }));
+        }
+        if self.volume_container_input.is_none() {
+            self.volume_container_input = Some(cx.new(|cx| {
+                InputState::new(window, cx).placeholder("Container path")
+            }));
+        }
+
+        // Network input
+        if self.network_input.is_none() {
+            self.network_input = Some(cx.new(|cx| {
+                InputState::new(window, cx).placeholder("Network name (optional)")
             }));
         }
     }
@@ -328,6 +474,36 @@ impl CreateContainerDialog {
             .and_then(|s| s.read(cx).selected_value().cloned())
             .unwrap_or_default();
 
+        let network = self
+            .network_input
+            .as_ref()
+            .map(|s| s.read(cx).text().to_string())
+            .filter(|s| !s.is_empty());
+
+        // Collect env vars
+        let env_vars: Vec<(String, String)> = self
+            .env_vars
+            .iter()
+            .filter(|e| !e.key.is_empty())
+            .map(|e| (e.key.clone(), e.value.clone()))
+            .collect();
+
+        // Collect ports
+        let ports: Vec<(String, String, String)> = self
+            .ports
+            .iter()
+            .filter(|p| !p.container_port.is_empty())
+            .map(|p| (p.host_port.clone(), p.container_port.clone(), p.protocol.clone()))
+            .collect();
+
+        // Collect volumes
+        let volumes: Vec<(String, String, bool)> = self
+            .volumes
+            .iter()
+            .filter(|v| !v.host_path.is_empty() && !v.container_path.is_empty())
+            .map(|v| (v.host_path.clone(), v.container_path.clone(), v.read_only))
+            .collect();
+
         CreateContainerOptions {
             image,
             platform,
@@ -341,6 +517,10 @@ impl CreateContainerDialog {
             read_only: self.read_only,
             docker_init: self.docker_init,
             start_after_create,
+            env_vars,
+            ports,
+            volumes,
+            network,
         }
     }
 
@@ -393,18 +573,8 @@ impl CreateContainerDialog {
             .bg(rgb(0x1a1b26))
             .child(div().text_xs().text_color(rgb(0x565f89)).child(title))
     }
-}
 
-impl Focusable for CreateContainerDialog {
-    fn focus_handle(&self, _cx: &App) -> FocusHandle {
-        self.focus_handle.clone()
-    }
-}
-
-impl Render for CreateContainerDialog {
-    fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
-        self.ensure_inputs(window, cx);
-
+    fn render_general_tab(&self, cx: &mut Context<Self>) -> impl IntoElement {
         let remove_after_stop = self.remove_after_stop;
         let privileged = self.privileged;
         let read_only = self.read_only;
@@ -420,8 +590,6 @@ impl Render for CreateContainerDialog {
 
         v_flex()
             .w_full()
-            .max_h(px(600.))
-            .overflow_y_scrollbar()
             // Image row (required)
             .child(self.render_form_row(
                 "Image",
@@ -435,13 +603,13 @@ impl Render for CreateContainerDialog {
             // Platform
             .child(self.render_form_row_with_desc(
                 "Platform",
-                "Target platform for the container. (--platform)",
+                "Target platform for the container",
                 div().w(px(150.)).child(Select::new(&platform_select).small()),
             ))
             // Remove after stop
             .child(self.render_form_row_with_desc(
                 "Remove after stop",
-                "Automatically delete the container after it stops. (--rm)",
+                "Automatically delete after stop (--rm)",
                 Switch::new("remove-after-stop")
                     .checked(remove_after_stop)
                     .on_click(cx.listener(|this, checked: &bool, _window, cx| {
@@ -452,33 +620,28 @@ impl Render for CreateContainerDialog {
             // Restart policy
             .child(self.render_form_row_with_desc(
                 "Restart policy",
-                "Whether to restart the container automatically. (--restart)",
+                "When to restart the container",
                 div().w(px(150.)).child(Select::new(&restart_policy_select).small()),
             ))
-            // Payload section
-            .child(self.render_section_header("Payload"))
-            .child(self.render_form_row_with_desc(
+            // Command section
+            .child(self.render_section_header("Command"))
+            .child(self.render_form_row(
                 "Command",
-                "Command to run in the container",
                 div().w(px(250.)).child(Input::new(&command_input).small()),
             ))
-            .child(self.render_form_row_with_desc(
+            .child(self.render_form_row(
                 "Entrypoint",
-                "Override the default entrypoint. (--entrypoint)",
-                div()
-                    .w(px(250.))
-                    .child(Input::new(&entrypoint_input).small()),
+                div().w(px(250.)).child(Input::new(&entrypoint_input).small()),
             ))
-            .child(self.render_form_row_with_desc(
-                "Working directory",
-                "Working directory for the command. (--workdir)",
+            .child(self.render_form_row(
+                "Working dir",
                 div().w(px(250.)).child(Input::new(&workdir_input).small()),
             ))
             // Advanced section
             .child(self.render_section_header("Advanced"))
             .child(self.render_form_row_with_desc(
                 "Privileged",
-                "Allow access to privileged APIs and resources. (--privileged)",
+                "Full access to host (--privileged)",
                 Switch::new("privileged")
                     .checked(privileged)
                     .on_click(cx.listener(|this, checked: &bool, _window, cx| {
@@ -488,7 +651,7 @@ impl Render for CreateContainerDialog {
             ))
             .child(self.render_form_row_with_desc(
                 "Read-only",
-                "Mount the container's root filesystem as read-only. (--read-only)",
+                "Read-only root filesystem (--read-only)",
                 Switch::new("read-only")
                     .checked(read_only)
                     .on_click(cx.listener(|this, checked: &bool, _window, cx| {
@@ -497,8 +660,8 @@ impl Render for CreateContainerDialog {
                     })),
             ))
             .child(self.render_form_row_with_desc(
-                "Use docker-init",
-                "Run the container payload under a docker-init process. (--init)",
+                "Docker init",
+                "Use docker-init process (--init)",
                 Switch::new("docker-init")
                     .checked(docker_init)
                     .on_click(cx.listener(|this, checked: &bool, _window, cx| {
@@ -506,5 +669,450 @@ impl Render for CreateContainerDialog {
                         cx.notify();
                     })),
             ))
+    }
+
+    fn render_ports_tab(&self, cx: &mut Context<Self>) -> impl IntoElement {
+        let port_host_input = self.port_host_input.clone().unwrap();
+        let port_container_input = self.port_container_input.clone().unwrap();
+        let port_protocol_tcp = self.port_protocol_tcp;
+
+        v_flex()
+            .w_full()
+            .gap(px(8.))
+            .p(px(16.))
+            // Add port row
+            .child(
+                h_flex()
+                    .w_full()
+                    .gap(px(8.))
+                    .items_center()
+                    .child(
+                        div()
+                            .w(px(100.))
+                            .child(Input::new(&port_host_input).small()),
+                    )
+                    .child(Label::new(":").text_color(rgb(0x565f89)))
+                    .child(
+                        div()
+                            .w(px(100.))
+                            .child(Input::new(&port_container_input).small()),
+                    )
+                    .child(
+                        h_flex()
+                            .gap(px(4.))
+                            .child(
+                                Button::new("tcp")
+                                    .label("TCP")
+                                    .xsmall()
+                                    .when(port_protocol_tcp, |b| b.primary())
+                                    .when(!port_protocol_tcp, |b| b.ghost())
+                                    .on_click(cx.listener(|this, _ev, _window, cx| {
+                                        this.port_protocol_tcp = true;
+                                        cx.notify();
+                                    })),
+                            )
+                            .child(
+                                Button::new("udp")
+                                    .label("UDP")
+                                    .xsmall()
+                                    .when(!port_protocol_tcp, |b| b.primary())
+                                    .when(port_protocol_tcp, |b| b.ghost())
+                                    .on_click(cx.listener(|this, _ev, _window, cx| {
+                                        this.port_protocol_tcp = false;
+                                        cx.notify();
+                                    })),
+                            ),
+                    )
+                    .child(
+                        Button::new("add-port")
+                            .icon(IconName::Plus)
+                            .xsmall()
+                            .ghost()
+                            .on_click(cx.listener(|this, _ev, window, cx| {
+                                let host = this.port_host_input.as_ref()
+                                    .map(|s| s.read(cx).text().to_string())
+                                    .unwrap_or_default();
+                                let container = this.port_container_input.as_ref()
+                                    .map(|s| s.read(cx).text().to_string())
+                                    .unwrap_or_default();
+
+                                if !container.is_empty() {
+                                    this.ports.push(PortMapping {
+                                        host_port: if host.is_empty() { container.clone() } else { host },
+                                        container_port: container,
+                                        protocol: if this.port_protocol_tcp { "tcp".to_string() } else { "udp".to_string() },
+                                    });
+                                    // Recreate inputs to clear them
+                                    this.port_host_input = Some(cx.new(|cx| {
+                                        InputState::new(window, cx).placeholder("Host port")
+                                    }));
+                                    this.port_container_input = Some(cx.new(|cx| {
+                                        InputState::new(window, cx).placeholder("Container port")
+                                    }));
+                                    cx.notify();
+                                }
+                            })),
+                    ),
+            )
+            .child(
+                div()
+                    .text_xs()
+                    .text_color(rgb(0x565f89))
+                    .child("Host port : Container port"),
+            )
+            // List of added ports
+            .children(self.ports.iter().enumerate().map(|(idx, port)| {
+                let protocol = port.protocol.clone();
+                h_flex()
+                    .w_full()
+                    .py(px(8.))
+                    .px(px(12.))
+                    .gap(px(8.))
+                    .items_center()
+                    .bg(rgb(0x1a1b26))
+                    .rounded(px(4.))
+                    .child(
+                        div()
+                            .flex_1()
+                            .text_sm()
+                            .text_color(rgb(0xc0caf5))
+                            .child(format!("{}:{}/{}", port.host_port, port.container_port, protocol)),
+                    )
+                    .child(
+                        Button::new(SharedString::from(format!("remove-port-{}", idx)))
+                            .icon(IconName::Minus)
+                            .xsmall()
+                            .ghost()
+                            .on_click(cx.listener(move |this, _ev, _window, cx| {
+                                this.ports.remove(idx);
+                                cx.notify();
+                            })),
+                    )
+            }))
+    }
+
+    fn render_volumes_tab(&self, cx: &mut Context<Self>) -> impl IntoElement {
+        let volume_host_input = self.volume_host_input.clone().unwrap();
+        let volume_container_input = self.volume_container_input.clone().unwrap();
+        let volume_readonly = self.volume_readonly;
+
+        v_flex()
+            .w_full()
+            .gap(px(8.))
+            .p(px(16.))
+            // Add volume row
+            .child(
+                h_flex()
+                    .w_full()
+                    .gap(px(8.))
+                    .items_center()
+                    .child(
+                        div()
+                            .w(px(150.))
+                            .child(Input::new(&volume_host_input).small()),
+                    )
+                    .child(Label::new(":").text_color(rgb(0x565f89)))
+                    .child(
+                        div()
+                            .w(px(150.))
+                            .child(Input::new(&volume_container_input).small()),
+                    )
+                    .child(
+                        h_flex()
+                            .gap(px(4.))
+                            .items_center()
+                            .child(Label::new("RO").text_color(rgb(0x565f89)).text_xs())
+                            .child(
+                                Switch::new("volume-ro")
+                                    .checked(volume_readonly)
+                                    .on_click(cx.listener(|this, checked: &bool, _window, cx| {
+                                        this.volume_readonly = *checked;
+                                        cx.notify();
+                                    })),
+                            ),
+                    )
+                    .child(
+                        Button::new("add-volume")
+                            .icon(IconName::Plus)
+                            .xsmall()
+                            .ghost()
+                            .on_click(cx.listener(|this, _ev, window, cx| {
+                                let host = this.volume_host_input.as_ref()
+                                    .map(|s| s.read(cx).text().to_string())
+                                    .unwrap_or_default();
+                                let container = this.volume_container_input.as_ref()
+                                    .map(|s| s.read(cx).text().to_string())
+                                    .unwrap_or_default();
+
+                                if !host.is_empty() && !container.is_empty() {
+                                    this.volumes.push(VolumeMount {
+                                        host_path: host,
+                                        container_path: container,
+                                        read_only: this.volume_readonly,
+                                    });
+                                    // Recreate inputs to clear them
+                                    this.volume_host_input = Some(cx.new(|cx| {
+                                        InputState::new(window, cx).placeholder("Host path or volume name")
+                                    }));
+                                    this.volume_container_input = Some(cx.new(|cx| {
+                                        InputState::new(window, cx).placeholder("Container path")
+                                    }));
+                                    this.volume_readonly = false;
+                                    cx.notify();
+                                }
+                            })),
+                    ),
+            )
+            .child(
+                div()
+                    .text_xs()
+                    .text_color(rgb(0x565f89))
+                    .child("Host path : Container path"),
+            )
+            // List of added volumes
+            .children(self.volumes.iter().enumerate().map(|(idx, vol)| {
+                let ro_label = if vol.read_only { " (ro)" } else { "" };
+                h_flex()
+                    .w_full()
+                    .py(px(8.))
+                    .px(px(12.))
+                    .gap(px(8.))
+                    .items_center()
+                    .bg(rgb(0x1a1b26))
+                    .rounded(px(4.))
+                    .child(
+                        div()
+                            .flex_1()
+                            .text_sm()
+                            .text_color(rgb(0xc0caf5))
+                            .child(format!("{}:{}{}", vol.host_path, vol.container_path, ro_label)),
+                    )
+                    .child(
+                        Button::new(SharedString::from(format!("remove-vol-{}", idx)))
+                            .icon(IconName::Minus)
+                            .xsmall()
+                            .ghost()
+                            .on_click(cx.listener(move |this, _ev, _window, cx| {
+                                this.volumes.remove(idx);
+                                cx.notify();
+                            })),
+                    )
+            }))
+    }
+
+    fn render_env_tab(&self, cx: &mut Context<Self>) -> impl IntoElement {
+        let env_key_input = self.env_key_input.clone().unwrap();
+        let env_value_input = self.env_value_input.clone().unwrap();
+
+        v_flex()
+            .w_full()
+            .gap(px(8.))
+            .p(px(16.))
+            // Add env var row
+            .child(
+                h_flex()
+                    .w_full()
+                    .gap(px(8.))
+                    .items_center()
+                    .child(
+                        div()
+                            .w(px(120.))
+                            .child(Input::new(&env_key_input).small()),
+                    )
+                    .child(Label::new("=").text_color(rgb(0x565f89)))
+                    .child(
+                        div()
+                            .flex_1()
+                            .child(Input::new(&env_value_input).small()),
+                    )
+                    .child(
+                        Button::new("add-env")
+                            .icon(IconName::Plus)
+                            .xsmall()
+                            .ghost()
+                            .on_click(cx.listener(|this, _ev, window, cx| {
+                                let key = this.env_key_input.as_ref()
+                                    .map(|s| s.read(cx).text().to_string())
+                                    .unwrap_or_default();
+                                let value = this.env_value_input.as_ref()
+                                    .map(|s| s.read(cx).text().to_string())
+                                    .unwrap_or_default();
+
+                                if !key.is_empty() {
+                                    this.env_vars.push(EnvVar { key, value });
+                                    // Recreate inputs to clear them
+                                    this.env_key_input = Some(cx.new(|cx| {
+                                        InputState::new(window, cx).placeholder("KEY")
+                                    }));
+                                    this.env_value_input = Some(cx.new(|cx| {
+                                        InputState::new(window, cx).placeholder("VALUE")
+                                    }));
+                                    cx.notify();
+                                }
+                            })),
+                    ),
+            )
+            // List of added env vars
+            .children(self.env_vars.iter().enumerate().map(|(idx, env)| {
+                h_flex()
+                    .w_full()
+                    .py(px(8.))
+                    .px(px(12.))
+                    .gap(px(8.))
+                    .items_center()
+                    .bg(rgb(0x1a1b26))
+                    .rounded(px(4.))
+                    .child(
+                        div()
+                            .w(px(120.))
+                            .text_sm()
+                            .text_color(rgb(0x7aa2f7))
+                            .overflow_hidden()
+                            .text_ellipsis()
+                            .child(env.key.clone()),
+                    )
+                    .child(Label::new("=").text_color(rgb(0x565f89)))
+                    .child(
+                        div()
+                            .flex_1()
+                            .text_sm()
+                            .text_color(rgb(0xc0caf5))
+                            .overflow_hidden()
+                            .text_ellipsis()
+                            .child(env.value.clone()),
+                    )
+                    .child(
+                        Button::new(SharedString::from(format!("remove-env-{}", idx)))
+                            .icon(IconName::Minus)
+                            .xsmall()
+                            .ghost()
+                            .on_click(cx.listener(move |this, _ev, _window, cx| {
+                                this.env_vars.remove(idx);
+                                cx.notify();
+                            })),
+                    )
+            }))
+    }
+
+    fn render_network_tab(&self, _cx: &mut Context<Self>) -> impl IntoElement {
+        let network_input = self.network_input.clone().unwrap();
+
+        v_flex()
+            .w_full()
+            .gap(px(8.))
+            .p(px(16.))
+            .child(
+                h_flex()
+                    .w_full()
+                    .gap(px(8.))
+                    .items_center()
+                    .child(Label::new("Network").text_color(rgb(0xa9b1d6)))
+                    .child(
+                        div()
+                            .flex_1()
+                            .child(Input::new(&network_input).small()),
+                    ),
+            )
+            .child(
+                div()
+                    .text_xs()
+                    .text_color(rgb(0x565f89))
+                    .child("Leave empty for default bridge network"),
+            )
+    }
+}
+
+impl Focusable for CreateContainerDialog {
+    fn focus_handle(&self, _cx: &App) -> FocusHandle {
+        self.focus_handle.clone()
+    }
+}
+
+impl Render for CreateContainerDialog {
+    fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+        self.ensure_inputs(window, cx);
+
+        let active_tab = self.active_tab;
+
+        v_flex()
+            .w_full()
+            .max_h(px(500.))
+            // Tab bar
+            .child(
+                div()
+                    .w_full()
+                    .border_b_1()
+                    .border_color(rgb(0x414868))
+                    .child(
+                        h_flex()
+                            .gap(px(4.))
+                            .child(
+                                Button::new("tab-general")
+                                    .label("General")
+                                    .small()
+                                    .when(active_tab == 0, |b| b.primary())
+                                    .when(active_tab != 0, |b| b.ghost())
+                                    .on_click(cx.listener(|this, _ev, _window, cx| {
+                                        this.active_tab = 0;
+                                        cx.notify();
+                                    })),
+                            )
+                            .child(
+                                Button::new("tab-ports")
+                                    .label(format!("Ports ({})", self.ports.len()))
+                                    .small()
+                                    .when(active_tab == 1, |b| b.primary())
+                                    .when(active_tab != 1, |b| b.ghost())
+                                    .on_click(cx.listener(|this, _ev, _window, cx| {
+                                        this.active_tab = 1;
+                                        cx.notify();
+                                    })),
+                            )
+                            .child(
+                                Button::new("tab-volumes")
+                                    .label(format!("Volumes ({})", self.volumes.len()))
+                                    .small()
+                                    .when(active_tab == 2, |b| b.primary())
+                                    .when(active_tab != 2, |b| b.ghost())
+                                    .on_click(cx.listener(|this, _ev, _window, cx| {
+                                        this.active_tab = 2;
+                                        cx.notify();
+                                    })),
+                            )
+                            .child(
+                                Button::new("tab-env")
+                                    .label(format!("Env ({})", self.env_vars.len()))
+                                    .small()
+                                    .when(active_tab == 3, |b| b.primary())
+                                    .when(active_tab != 3, |b| b.ghost())
+                                    .on_click(cx.listener(|this, _ev, _window, cx| {
+                                        this.active_tab = 3;
+                                        cx.notify();
+                                    })),
+                            )
+                            .child(
+                                Button::new("tab-network")
+                                    .label("Network")
+                                    .small()
+                                    .when(active_tab == 4, |b| b.primary())
+                                    .when(active_tab != 4, |b| b.ghost())
+                                    .on_click(cx.listener(|this, _ev, _window, cx| {
+                                        this.active_tab = 4;
+                                        cx.notify();
+                                    })),
+                            ),
+                    ),
+            )
+            // Tab content
+            .child(
+                div()
+                    .flex_1()
+                    .overflow_y_scrollbar()
+                    .when(active_tab == 0, |el| el.child(self.render_general_tab(cx)))
+                    .when(active_tab == 1, |el| el.child(self.render_ports_tab(cx)))
+                    .when(active_tab == 2, |el| el.child(self.render_volumes_tab(cx)))
+                    .when(active_tab == 3, |el| el.child(self.render_env_tab(cx)))
+                    .when(active_tab == 4, |el| el.child(self.render_network_tab(cx))),
+            )
     }
 }

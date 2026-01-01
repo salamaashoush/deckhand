@@ -237,6 +237,10 @@ impl DockerClient {
         privileged: bool,
         read_only: bool,
         init: bool,
+        env_vars: Vec<(String, String)>,
+        ports: Vec<(String, String, String)>, // (host_port, container_port, protocol)
+        volumes: Vec<(String, String, bool)>, // (host_path, container_path, read_only)
+        network: Option<&str>,
     ) -> Result<String> {
         let docker = self.client()?;
 
@@ -261,12 +265,69 @@ impl DockerClient {
             }
         }
 
+        // Port bindings
+        if !ports.is_empty() {
+            let mut port_bindings: HashMap<String, Option<Vec<bollard::models::PortBinding>>> = HashMap::new();
+            for (host_port, container_port, protocol) in &ports {
+                let key = format!("{}/{}", container_port, protocol);
+                let binding = bollard::models::PortBinding {
+                    host_ip: Some("0.0.0.0".to_string()),
+                    host_port: Some(host_port.clone()),
+                };
+                port_bindings.insert(key, Some(vec![binding]));
+            }
+            host_config.port_bindings = Some(port_bindings);
+        }
+
+        // Volume bindings
+        if !volumes.is_empty() {
+            let binds: Vec<String> = volumes
+                .iter()
+                .map(|(host, container, ro)| {
+                    if *ro {
+                        format!("{}:{}:ro", host, container)
+                    } else {
+                        format!("{}:{}", host, container)
+                    }
+                })
+                .collect();
+            host_config.binds = Some(binds);
+        }
+
+        // Network mode
+        if let Some(net) = network {
+            if !net.is_empty() {
+                host_config.network_mode = Some(net.to_string());
+            }
+        }
+
+        // Environment variables
+        let env: Option<Vec<String>> = if env_vars.is_empty() {
+            None
+        } else {
+            Some(env_vars.iter().map(|(k, v)| format!("{}={}", k, v)).collect())
+        };
+
+        // Exposed ports (for port mappings)
+        let exposed_ports: Option<HashMap<String, HashMap<(), ()>>> = if ports.is_empty() {
+            None
+        } else {
+            let mut exposed = HashMap::new();
+            for (_, container_port, protocol) in &ports {
+                let key = format!("{}/{}", container_port, protocol);
+                exposed.insert(key, HashMap::new());
+            }
+            Some(exposed)
+        };
+
         // Build container config
         let config: Config<String> = Config {
             image: Some(image.to_string()),
             cmd: command,
             entrypoint,
             working_dir: working_dir.map(String::from),
+            env,
+            exposed_ports,
             host_config: Some(host_config),
             ..Default::default()
         };

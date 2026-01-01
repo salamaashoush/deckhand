@@ -569,6 +569,10 @@ pub fn create_container(options: crate::ui::containers::CreateContainerOptions, 
                 options.privileged,
                 options.read_only,
                 options.docker_init,
+                options.env_vars,
+                options.ports,
+                options.volumes,
+                options.network.as_deref(),
             )
             .await?;
 
