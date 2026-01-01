@@ -13,8 +13,10 @@ pub struct NetworkInfo {
     pub driver: String,
     pub scope: String,
     pub internal: bool,
+    pub enable_ipv6: bool,
     pub created: Option<DateTime<Utc>>,
     pub labels: HashMap<String, String>,
+    pub options: HashMap<String, String>,
     pub ipam: Option<IpamInfo>,
     pub containers: HashMap<String, NetworkContainer>,
 }
@@ -129,8 +131,10 @@ impl DockerClient {
                 driver: network.driver.unwrap_or_default(),
                 scope: network.scope.unwrap_or_default(),
                 internal: network.internal.unwrap_or(false),
+                enable_ipv6: network.enable_ipv6.unwrap_or(false),
                 created,
                 labels: network.labels.unwrap_or_default(),
+                options: network.options.unwrap_or_default(),
                 ipam,
                 containers,
             });
@@ -146,12 +150,32 @@ impl DockerClient {
         Ok(())
     }
 
-    pub async fn create_network(&self, name: &str, driver: &str) -> Result<NetworkInfo> {
+    pub async fn create_network(
+        &self,
+        name: &str,
+        enable_ipv6: bool,
+        subnet: Option<&str>,
+    ) -> Result<NetworkInfo> {
         let docker = self.client()?;
+
+        let ipam = if let Some(subnet) = subnet {
+            Some(bollard::models::Ipam {
+                driver: Some("default".to_string()),
+                config: Some(vec![bollard::models::IpamConfig {
+                    subnet: Some(subnet.to_string()),
+                    ..Default::default()
+                }]),
+                options: None,
+            })
+        } else {
+            None
+        };
 
         let config = bollard::network::CreateNetworkOptions {
             name: name.to_string(),
-            driver: driver.to_string(),
+            driver: "bridge".to_string(),
+            enable_ipv6,
+            ipam: ipam.unwrap_or_default(),
             ..Default::default()
         };
 
@@ -161,12 +185,21 @@ impl DockerClient {
         Ok(NetworkInfo {
             id,
             name: name.to_string(),
-            driver: driver.to_string(),
+            driver: "bridge".to_string(),
             scope: "local".to_string(),
             internal: false,
+            enable_ipv6,
             created: Some(Utc::now()),
             labels: HashMap::new(),
-            ipam: None,
+            options: HashMap::new(),
+            ipam: subnet.map(|s| IpamInfo {
+                driver: Some("default".to_string()),
+                config: vec![IpamConfig {
+                    subnet: Some(s.to_string()),
+                    gateway: None,
+                    ip_range: None,
+                }],
+            }),
             containers: HashMap::new(),
         })
     }

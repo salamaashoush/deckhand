@@ -145,6 +145,11 @@ impl NetworkDetail {
             content = content.child(self.render_labels_section(network, cx));
         }
 
+        // Options section if not empty
+        if !network.options.is_empty() {
+            content = content.child(self.render_options_section(network, cx));
+        }
+
         content
     }
 
@@ -365,6 +370,84 @@ impl NetworkDetail {
                             .child(
                                 div()
                                     .flex_1()
+                                    .text_sm()
+                                    .text_color(colors.secondary_foreground)
+                                    .overflow_hidden()
+                                    .text_ellipsis()
+                                    .child(value.to_string()),
+                            );
+
+                        if i > 0 {
+                            row = row.border_t_1().border_color(colors.border);
+                        }
+                        row
+                    })),
+            )
+    }
+
+    fn render_options_section(&self, network: &NetworkInfo, cx: &App) -> gpui::Div {
+        let colors = &cx.theme().colors;
+
+        let mut options: Vec<_> = network.options.iter().collect();
+        options.sort_by(|a, b| a.0.cmp(b.0));
+
+        v_flex()
+            .gap(px(1.))
+            .child(
+                div()
+                    .py(px(8.))
+                    .text_sm()
+                    .font_weight(gpui::FontWeight::MEDIUM)
+                    .text_color(colors.foreground)
+                    .child("Options"),
+            )
+            .child(
+                v_flex()
+                    .bg(colors.background)
+                    .rounded(px(8.))
+                    .overflow_hidden()
+                    // Header row
+                    .child(
+                        h_flex()
+                            .w_full()
+                            .px(px(16.))
+                            .py(px(8.))
+                            .bg(colors.sidebar)
+                            .child(
+                                div()
+                                    .flex_1()
+                                    .text_xs()
+                                    .font_weight(gpui::FontWeight::MEDIUM)
+                                    .text_color(colors.muted_foreground)
+                                    .child("Key"),
+                            )
+                            .child(
+                                div()
+                                    .w(px(120.))
+                                    .text_xs()
+                                    .font_weight(gpui::FontWeight::MEDIUM)
+                                    .text_color(colors.muted_foreground)
+                                    .child("Value"),
+                            ),
+                    )
+                    // Option rows
+                    .children(options.iter().enumerate().map(|(i, (key, value))| {
+                        let mut row = h_flex()
+                            .w_full()
+                            .px(px(16.))
+                            .py(px(10.))
+                            .child(
+                                div()
+                                    .flex_1()
+                                    .text_sm()
+                                    .text_color(colors.foreground)
+                                    .overflow_hidden()
+                                    .text_ellipsis()
+                                    .child(key.to_string()),
+                            )
+                            .child(
+                                div()
+                                    .w(px(120.))
                                     .text_sm()
                                     .text_color(colors.secondary_foreground)
                                     .overflow_hidden()

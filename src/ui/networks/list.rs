@@ -17,6 +17,7 @@ use crate::state::{docker_state, DockerState, StateChanged};
 /// Network list events emitted to parent
 pub enum NetworkListEvent {
     Selected(NetworkInfo),
+    CreateNetwork,
 }
 
 /// Delegate for the network list
@@ -329,6 +330,15 @@ impl Render for NetworkList {
                             .icon(Icon::new(AppIcon::Search))
                             .ghost()
                             .compact(),
+                    )
+                    .child(
+                        Button::new("create")
+                            .icon(Icon::new(AppIcon::Plus))
+                            .ghost()
+                            .compact()
+                            .on_click(cx.listener(|_this, _ev, _window, cx| {
+                                cx.emit(NetworkListEvent::CreateNetwork);
+                            })),
                     ),
             );
 

@@ -1063,6 +1063,57 @@ pub fn refresh_networks(cx: &mut App) {
     .detach();
 }
 
+pub fn create_network(name: String, enable_ipv6: bool, subnet: Option<String>, cx: &mut App) {
+    let task_id = start_task(cx, "create_network", format!("Creating network {}...", name));
+    let disp = dispatcher(cx);
+    let client = docker_client();
+
+    let tokio_task = Tokio::spawn(cx, async move {
+        let guard = client.read().await;
+        let docker = guard
+            .as_ref()
+            .ok_or_else(|| anyhow::anyhow!("Docker client not connected"))?;
+        docker.create_network(&name, enable_ipv6, subnet.as_deref()).await
+    });
+
+    cx.spawn(async move |cx| {
+        let result = tokio_task.await;
+        cx.update(|cx| {
+            match result {
+                Ok(Ok(_)) => {
+                    complete_task(cx, task_id);
+                    disp.update(cx, |_, cx| {
+                        cx.emit(DispatcherEvent::TaskCompleted {
+                            name: "create_network".to_string(),
+                            message: "Network created".to_string(),
+                        });
+                    });
+                    refresh_networks(cx);
+                }
+                Ok(Err(e)) => {
+                    fail_task(cx, task_id, e.to_string());
+                    disp.update(cx, |_, cx| {
+                        cx.emit(DispatcherEvent::TaskFailed {
+                            name: "create_network".to_string(),
+                            error: e.to_string(),
+                        });
+                    });
+                }
+                Err(e) => {
+                    fail_task(cx, task_id, e.to_string());
+                    disp.update(cx, |_, cx| {
+                        cx.emit(DispatcherEvent::TaskFailed {
+                            name: "create_network".to_string(),
+                            error: e.to_string(),
+                        });
+                    });
+                }
+            }
+        })
+    })
+    .detach();
+}
+
 pub fn delete_network(id: String, cx: &mut App) {
     let task_id = start_task(cx, "delete_network", "Deleting network...".to_string());
     let disp = dispatcher(cx);
