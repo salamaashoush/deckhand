@@ -1,0 +1,393 @@
+use gpui::{
+    div, prelude::*, px, rgb, App, Context, Entity, FocusHandle, Focusable, ParentElement, Render,
+    Styled, Window,
+};
+use gpui_component::{
+    h_flex, v_flex,
+    button::{Button, ButtonVariants},
+    input::{Input, InputState},
+    switch::Switch,
+    label::Label,
+    Sizable,
+};
+
+use crate::colima::{ColimaStartOptions, MountType, VmArch, VmRuntime, VmType};
+
+/// Form state for creating a new Colima machine
+pub struct CreateMachineDialog {
+    focus_handle: FocusHandle,
+
+    // Input states - created lazily
+    name_input: Option<Entity<InputState>>,
+    cpus_input: Option<Entity<InputState>>,
+    memory_input: Option<Entity<InputState>>,
+    disk_input: Option<Entity<InputState>>,
+
+    // Selection state
+    runtime: VmRuntime,
+    vm_type: VmType,
+    arch: VmArch,
+    mount_type: MountType,
+    kubernetes: bool,
+    network_address: bool,
+}
+
+impl CreateMachineDialog {
+    pub fn new(cx: &mut Context<Self>) -> Self {
+        let focus_handle = cx.focus_handle();
+
+        Self {
+            focus_handle,
+            name_input: None,
+            cpus_input: None,
+            memory_input: None,
+            disk_input: None,
+            runtime: VmRuntime::Docker,
+            vm_type: VmType::default(),
+            arch: VmArch::default(),
+            mount_type: MountType::default(),
+            kubernetes: false,
+            network_address: false,
+        }
+    }
+
+    fn ensure_inputs(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        if self.name_input.is_none() {
+            self.name_input = Some(cx.new(|cx| {
+                let mut state = InputState::new(window, cx)
+                    .placeholder("Machine name");
+                state.insert("default", window, cx);
+                state
+            }));
+        }
+
+        if self.cpus_input.is_none() {
+            self.cpus_input = Some(cx.new(|cx| {
+                let mut state = InputState::new(window, cx)
+                    .placeholder("CPUs");
+                state.insert("2", window, cx);
+                state
+            }));
+        }
+
+        if self.memory_input.is_none() {
+            self.memory_input = Some(cx.new(|cx| {
+                let mut state = InputState::new(window, cx)
+                    .placeholder("Memory (GB)");
+                state.insert("2", window, cx);
+                state
+            }));
+        }
+
+        if self.disk_input.is_none() {
+            self.disk_input = Some(cx.new(|cx| {
+                let mut state = InputState::new(window, cx)
+                    .placeholder("Disk (GB)");
+                state.insert("60", window, cx);
+                state
+            }));
+        }
+    }
+
+    pub fn get_options(&self, cx: &App) -> ColimaStartOptions {
+        let name = self.name_input.as_ref()
+            .map(|s| s.read(cx).text().to_string())
+            .unwrap_or_else(|| "default".to_string());
+        let cpus: u32 = self.cpus_input.as_ref()
+            .map(|s| s.read(cx).text().to_string().parse().unwrap_or(2))
+            .unwrap_or(2);
+        let memory: u32 = self.memory_input.as_ref()
+            .map(|s| s.read(cx).text().to_string().parse().unwrap_or(2))
+            .unwrap_or(2);
+        let disk: u32 = self.disk_input.as_ref()
+            .map(|s| s.read(cx).text().to_string().parse().unwrap_or(60))
+            .unwrap_or(60);
+
+        ColimaStartOptions::new()
+            .with_name(name)
+            .with_cpus(cpus)
+            .with_memory_gb(memory)
+            .with_disk_gb(disk)
+            .with_runtime(self.runtime)
+            .with_vm_type(self.vm_type)
+            .with_arch(self.arch)
+            .with_mount_type(self.mount_type)
+            .with_kubernetes(self.kubernetes)
+            .with_network_address(self.network_address)
+    }
+
+    fn render_form_row(&self, label: &'static str, content: impl IntoElement) -> gpui::Div {
+        h_flex()
+            .w_full()
+            .py(px(12.))
+            .px(px(16.))
+            .justify_between()
+            .items_center()
+            .border_b_1()
+            .border_color(rgb(0x414868))
+            .child(
+                Label::new(label)
+                    .text_color(rgb(0xa9b1d6))
+            )
+            .child(content)
+    }
+
+    fn render_section_header(&self, title: &'static str) -> gpui::Div {
+        div()
+            .w_full()
+            .py(px(8.))
+            .px(px(16.))
+            .bg(rgb(0x1a1b26))
+            .child(
+                div()
+                    .text_xs()
+                    .text_color(rgb(0x565f89))
+                    .child(title)
+            )
+    }
+}
+
+impl Focusable for CreateMachineDialog {
+    fn focus_handle(&self, _cx: &App) -> FocusHandle {
+        self.focus_handle.clone()
+    }
+}
+
+impl Render for CreateMachineDialog {
+    fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+        // Ensure inputs are created
+        self.ensure_inputs(window, cx);
+
+        // Clone state for closures
+        let runtime = self.runtime;
+        let vm_type = self.vm_type;
+        let arch = self.arch;
+        let mount_type = self.mount_type;
+        let kubernetes = self.kubernetes;
+        let network_address = self.network_address;
+
+        let name_input = self.name_input.clone().unwrap();
+        let cpus_input = self.cpus_input.clone().unwrap();
+        let memory_input = self.memory_input.clone().unwrap();
+        let disk_input = self.disk_input.clone().unwrap();
+
+        v_flex()
+            .w(px(500.))
+            .bg(rgb(0x24283b))
+            .rounded(px(12.))
+            .overflow_hidden()
+            .border_1()
+            .border_color(rgb(0x414868))
+            // Header
+            .child(
+                div()
+                    .w_full()
+                    .py(px(16.))
+                    .px(px(20.))
+                    .border_b_1()
+                    .border_color(rgb(0x414868))
+                    .child(
+                        Label::new("New Machine")
+                            .text_color(rgb(0xc0caf5))
+                    )
+            )
+            // Form content
+            .child(
+                v_flex()
+                    .w_full()
+                    // Name row
+                    .child(
+                        self.render_form_row(
+                            "Name",
+                            div()
+                                .w(px(200.))
+                                .child(Input::new(&name_input).small())
+                        )
+                    )
+                    // CPUs row
+                    .child(
+                        self.render_form_row(
+                            "CPUs",
+                            div()
+                                .w(px(100.))
+                                .child(Input::new(&cpus_input).small())
+                        )
+                    )
+                    // Memory row
+                    .child(
+                        self.render_form_row(
+                            "Memory (GB)",
+                            div()
+                                .w(px(100.))
+                                .child(Input::new(&memory_input).small())
+                        )
+                    )
+                    // Disk row
+                    .child(
+                        self.render_form_row(
+                            "Disk (GB)",
+                            div()
+                                .w(px(100.))
+                                .child(Input::new(&disk_input).small())
+                        )
+                    )
+                    // Runtime section
+                    .child(self.render_section_header("Runtime"))
+                    .child(
+                        self.render_form_row(
+                            "Container Runtime",
+                            h_flex()
+                                .gap(px(4.))
+                                .child(
+                                    Button::new("runtime-docker")
+                                        .label("Docker")
+                                        .small()
+                                        .when(runtime == VmRuntime::Docker, |btn| btn.primary())
+                                        .when(runtime != VmRuntime::Docker, |btn| btn.ghost())
+                                        .on_click(cx.listener(|this, _ev, _window, cx| {
+                                            this.runtime = VmRuntime::Docker;
+                                            cx.notify();
+                                        }))
+                                )
+                                .child(
+                                    Button::new("runtime-containerd")
+                                        .label("Containerd")
+                                        .small()
+                                        .when(runtime == VmRuntime::Containerd, |btn| btn.primary())
+                                        .when(runtime != VmRuntime::Containerd, |btn| btn.ghost())
+                                        .on_click(cx.listener(|this, _ev, _window, cx| {
+                                            this.runtime = VmRuntime::Containerd;
+                                            cx.notify();
+                                        }))
+                                )
+                        )
+                    )
+                    // VM Type section
+                    .child(self.render_section_header("Virtualization"))
+                    .child(
+                        self.render_form_row(
+                            "VM Type",
+                            h_flex()
+                                .gap(px(4.))
+                                .child(
+                                    Button::new("vm-qemu")
+                                        .label("QEMU")
+                                        .small()
+                                        .when(vm_type == VmType::Qemu, |btn| btn.primary())
+                                        .when(vm_type != VmType::Qemu, |btn| btn.ghost())
+                                        .on_click(cx.listener(|this, _ev, _window, cx| {
+                                            this.vm_type = VmType::Qemu;
+                                            cx.notify();
+                                        }))
+                                )
+                                .child(
+                                    Button::new("vm-vz")
+                                        .label("Apple VZ")
+                                        .small()
+                                        .when(vm_type == VmType::Vz, |btn| btn.primary())
+                                        .when(vm_type != VmType::Vz, |btn| btn.ghost())
+                                        .on_click(cx.listener(|this, _ev, _window, cx| {
+                                            this.vm_type = VmType::Vz;
+                                            cx.notify();
+                                        }))
+                                )
+                        )
+                    )
+                    .child(
+                        self.render_form_row(
+                            "Architecture",
+                            h_flex()
+                                .gap(px(4.))
+                                .child(
+                                    Button::new("arch-aarch64")
+                                        .label("arm64")
+                                        .small()
+                                        .when(arch == VmArch::Aarch64, |btn| btn.primary())
+                                        .when(arch != VmArch::Aarch64, |btn| btn.ghost())
+                                        .on_click(cx.listener(|this, _ev, _window, cx| {
+                                            this.arch = VmArch::Aarch64;
+                                            cx.notify();
+                                        }))
+                                )
+                                .child(
+                                    Button::new("arch-x86")
+                                        .label("x86_64")
+                                        .small()
+                                        .when(arch == VmArch::X86_64, |btn| btn.primary())
+                                        .when(arch != VmArch::X86_64, |btn| btn.ghost())
+                                        .on_click(cx.listener(|this, _ev, _window, cx| {
+                                            this.arch = VmArch::X86_64;
+                                            cx.notify();
+                                        }))
+                                )
+                        )
+                    )
+                    // Mount section
+                    .child(self.render_section_header("Storage"))
+                    .child(
+                        self.render_form_row(
+                            "Mount Type",
+                            h_flex()
+                                .gap(px(4.))
+                                .child(
+                                    Button::new("mount-sshfs")
+                                        .label("SSHFS")
+                                        .small()
+                                        .when(mount_type == MountType::Sshfs, |btn| btn.primary())
+                                        .when(mount_type != MountType::Sshfs, |btn| btn.ghost())
+                                        .on_click(cx.listener(|this, _ev, _window, cx| {
+                                            this.mount_type = MountType::Sshfs;
+                                            cx.notify();
+                                        }))
+                                )
+                                .child(
+                                    Button::new("mount-9p")
+                                        .label("9P")
+                                        .small()
+                                        .when(mount_type == MountType::NineP, |btn| btn.primary())
+                                        .when(mount_type != MountType::NineP, |btn| btn.ghost())
+                                        .on_click(cx.listener(|this, _ev, _window, cx| {
+                                            this.mount_type = MountType::NineP;
+                                            cx.notify();
+                                        }))
+                                )
+                                .child(
+                                    Button::new("mount-virtiofs")
+                                        .label("VirtioFS")
+                                        .small()
+                                        .when(mount_type == MountType::Virtiofs, |btn| btn.primary())
+                                        .when(mount_type != MountType::Virtiofs, |btn| btn.ghost())
+                                        .on_click(cx.listener(|this, _ev, _window, cx| {
+                                            this.mount_type = MountType::Virtiofs;
+                                            cx.notify();
+                                        }))
+                                )
+                        )
+                    )
+                    // Options section
+                    .child(self.render_section_header("Options"))
+                    .child(
+                        self.render_form_row(
+                            "Kubernetes",
+                            Switch::new("kubernetes")
+                                .checked(kubernetes)
+                                .on_click(cx.listener(|this, checked: &bool, _window, cx| {
+                                    this.kubernetes = *checked;
+                                    cx.notify();
+                                }))
+                        )
+                    )
+                    .child(
+                        self.render_form_row(
+                            "Network Address",
+                            Switch::new("network-address")
+                                .checked(network_address)
+                                .on_click(cx.listener(|this, checked: &bool, _window, cx| {
+                                    this.network_address = *checked;
+                                    cx.notify();
+                                }))
+                        )
+                    )
+            )
+    }
+}
