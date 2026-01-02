@@ -1,205 +1,204 @@
 use gpui::{
-    div, prelude::*, px, App, Context, Entity, FocusHandle, Focusable, Hsla, ParentElement, Render,
-    Styled, Window,
+  App, Context, Entity, FocusHandle, Focusable, Hsla, ParentElement, Render, Styled, Window, div, prelude::*, px,
 };
 use gpui_component::{
-    button::{Button, ButtonVariants},
-    h_flex,
-    input::{Input, InputState},
-    label::Label,
-    switch::Switch,
-    theme::ActiveTheme,
-    v_flex, Sizable,
+  Sizable,
+  button::{Button, ButtonVariants},
+  h_flex,
+  input::{Input, InputState},
+  label::Label,
+  switch::Switch,
+  theme::ActiveTheme,
+  v_flex,
 };
 
 use crate::colima::{ColimaStartOptions, ColimaVm, MountType, VmArch, VmRuntime, VmType};
 
 /// Form state for editing an existing Colima machine
 pub struct EditMachineDialog {
-    focus_handle: FocusHandle,
-    machine_name: String,
+  focus_handle: FocusHandle,
+  machine_name: String,
 
-    // Initial values from machine
-    initial_cpus: String,
-    initial_memory: String,
-    initial_disk: String,
+  // Initial values from machine
+  initial_cpus: String,
+  initial_memory: String,
+  initial_disk: String,
 
-    // Input states - created lazily
-    cpus_input: Option<Entity<InputState>>,
-    memory_input: Option<Entity<InputState>>,
-    disk_input: Option<Entity<InputState>>,
+  // Input states - created lazily
+  cpus_input: Option<Entity<InputState>>,
+  memory_input: Option<Entity<InputState>>,
+  disk_input: Option<Entity<InputState>>,
 
-    // Selection state
-    runtime: VmRuntime,
-    vm_type: VmType,
-    arch: VmArch,
-    mount_type: MountType,
-    kubernetes: bool,
-    network_address: bool,
+  // Selection state
+  runtime: VmRuntime,
+  vm_type: VmType,
+  arch: VmArch,
+  mount_type: MountType,
+  kubernetes: bool,
+  network_address: bool,
 }
 
 impl EditMachineDialog {
-    pub fn new(machine: &ColimaVm, cx: &mut Context<Self>) -> Self {
-        let focus_handle = cx.focus_handle();
+  pub fn new(machine: &ColimaVm, cx: &mut Context<Self>) -> Self {
+    let focus_handle = cx.focus_handle();
 
-        Self {
-            focus_handle,
-            machine_name: machine.name.clone(),
-            initial_cpus: machine.cpus.to_string(),
-            initial_memory: format!("{:.0}", machine.memory_gb()),
-            initial_disk: format!("{:.0}", machine.disk_gb()),
-            cpus_input: None,
-            memory_input: None,
-            disk_input: None,
-            runtime: machine.runtime,
-            vm_type: machine.vm_type.unwrap_or(VmType::Vz),
-            arch: machine.arch,
-            mount_type: machine.mount_type.unwrap_or(MountType::Virtiofs),
-            kubernetes: machine.kubernetes,
-            network_address: machine.address.is_some(),
-        }
+    Self {
+      focus_handle,
+      machine_name: machine.name.clone(),
+      initial_cpus: machine.cpus.to_string(),
+      initial_memory: format!("{:.0}", machine.memory_gb()),
+      initial_disk: format!("{:.0}", machine.disk_gb()),
+      cpus_input: None,
+      memory_input: None,
+      disk_input: None,
+      runtime: machine.runtime,
+      vm_type: machine.vm_type.unwrap_or(VmType::Vz),
+      arch: machine.arch,
+      mount_type: machine.mount_type.unwrap_or(MountType::Virtiofs),
+      kubernetes: machine.kubernetes,
+      network_address: machine.address.is_some(),
+    }
+  }
+
+  pub fn machine_name(&self) -> &str {
+    &self.machine_name
+  }
+
+  fn ensure_inputs(&mut self, machine: &ColimaVm, window: &mut Window, cx: &mut Context<Self>) {
+    if self.cpus_input.is_none() {
+      let cpus = machine.cpus.to_string();
+      self.cpus_input = Some(cx.new(|cx| {
+        let mut state = InputState::new(window, cx).placeholder("CPUs");
+        state.insert(&cpus, window, cx);
+        state
+      }));
     }
 
-    pub fn machine_name(&self) -> &str {
-        &self.machine_name
+    if self.memory_input.is_none() {
+      let memory = format!("{:.0}", machine.memory_gb());
+      self.memory_input = Some(cx.new(|cx| {
+        let mut state = InputState::new(window, cx).placeholder("Memory (GB)");
+        state.insert(&memory, window, cx);
+        state
+      }));
     }
 
-    fn ensure_inputs(&mut self, machine: &ColimaVm, window: &mut Window, cx: &mut Context<Self>) {
-        if self.cpus_input.is_none() {
-            let cpus = machine.cpus.to_string();
-            self.cpus_input = Some(cx.new(|cx| {
-                let mut state = InputState::new(window, cx).placeholder("CPUs");
-                state.insert(&cpus, window, cx);
-                state
-            }));
-        }
+    if self.disk_input.is_none() {
+      let disk = format!("{:.0}", machine.disk_gb());
+      self.disk_input = Some(cx.new(|cx| {
+        let mut state = InputState::new(window, cx).placeholder("Disk (GB)");
+        state.insert(&disk, window, cx);
+        state
+      }));
+    }
+  }
 
-        if self.memory_input.is_none() {
-            let memory = format!("{:.0}", machine.memory_gb());
-            self.memory_input = Some(cx.new(|cx| {
-                let mut state = InputState::new(window, cx).placeholder("Memory (GB)");
-                state.insert(&memory, window, cx);
-                state
-            }));
-        }
-
-        if self.disk_input.is_none() {
-            let disk = format!("{:.0}", machine.disk_gb());
-            self.disk_input = Some(cx.new(|cx| {
-                let mut state = InputState::new(window, cx).placeholder("Disk (GB)");
-                state.insert(&disk, window, cx);
-                state
-            }));
-        }
+  fn ensure_inputs_default(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+    if self.cpus_input.is_none() {
+      let cpus = self.initial_cpus.clone();
+      self.cpus_input = Some(cx.new(|cx| {
+        let mut state = InputState::new(window, cx).placeholder("CPUs");
+        state.insert(&cpus, window, cx);
+        state
+      }));
     }
 
-    fn ensure_inputs_default(&mut self, window: &mut Window, cx: &mut Context<Self>) {
-        if self.cpus_input.is_none() {
-            let cpus = self.initial_cpus.clone();
-            self.cpus_input = Some(cx.new(|cx| {
-                let mut state = InputState::new(window, cx).placeholder("CPUs");
-                state.insert(&cpus, window, cx);
-                state
-            }));
-        }
-
-        if self.memory_input.is_none() {
-            let memory = self.initial_memory.clone();
-            self.memory_input = Some(cx.new(|cx| {
-                let mut state = InputState::new(window, cx).placeholder("Memory (GB)");
-                state.insert(&memory, window, cx);
-                state
-            }));
-        }
-
-        if self.disk_input.is_none() {
-            let disk = self.initial_disk.clone();
-            self.disk_input = Some(cx.new(|cx| {
-                let mut state = InputState::new(window, cx).placeholder("Disk (GB)");
-                state.insert(&disk, window, cx);
-                state
-            }));
-        }
+    if self.memory_input.is_none() {
+      let memory = self.initial_memory.clone();
+      self.memory_input = Some(cx.new(|cx| {
+        let mut state = InputState::new(window, cx).placeholder("Memory (GB)");
+        state.insert(&memory, window, cx);
+        state
+      }));
     }
 
-    pub fn get_options(&self, cx: &App) -> ColimaStartOptions {
-        let cpus: u32 = self
-            .cpus_input
-            .as_ref()
-            .map(|s| s.read(cx).text().to_string().parse().unwrap_or(2))
-            .unwrap_or(2);
-        let memory: u32 = self
-            .memory_input
-            .as_ref()
-            .map(|s| s.read(cx).text().to_string().parse().unwrap_or(2))
-            .unwrap_or(2);
-        let disk: u32 = self
-            .disk_input
-            .as_ref()
-            .map(|s| s.read(cx).text().to_string().parse().unwrap_or(60))
-            .unwrap_or(60);
-
-        ColimaStartOptions::new()
-            .with_name(self.machine_name.clone())
-            .with_cpus(cpus)
-            .with_memory_gb(memory)
-            .with_disk_gb(disk)
-            .with_runtime(self.runtime)
-            .with_vm_type(self.vm_type)
-            .with_arch(self.arch)
-            .with_mount_type(self.mount_type)
-            .with_kubernetes(self.kubernetes)
-            .with_network_address(self.network_address)
+    if self.disk_input.is_none() {
+      let disk = self.initial_disk.clone();
+      self.disk_input = Some(cx.new(|cx| {
+        let mut state = InputState::new(window, cx).placeholder("Disk (GB)");
+        state.insert(&disk, window, cx);
+        state
+      }));
     }
+  }
 
-    pub fn render_with_machine(
-        &mut self,
-        machine: &ColimaVm,
-        window: &mut Window,
-        cx: &mut Context<Self>,
-    ) -> impl IntoElement {
-        // Ensure inputs are created with machine values
-        self.ensure_inputs(machine, window, cx);
-        let colors = cx.theme().colors.clone();
+  pub fn get_options(&self, cx: &App) -> ColimaStartOptions {
+    let cpus: u32 = self
+      .cpus_input
+      .as_ref()
+      .map(|s| s.read(cx).text().to_string().parse().unwrap_or(2))
+      .unwrap_or(2);
+    let memory: u32 = self
+      .memory_input
+      .as_ref()
+      .map(|s| s.read(cx).text().to_string().parse().unwrap_or(2))
+      .unwrap_or(2);
+    let disk: u32 = self
+      .disk_input
+      .as_ref()
+      .map(|s| s.read(cx).text().to_string().parse().unwrap_or(60))
+      .unwrap_or(60);
 
-        // Clone state for closures
-        let runtime = self.runtime;
-        let vm_type = self.vm_type;
-        let arch = self.arch;
-        let mount_type = self.mount_type;
-        let kubernetes = self.kubernetes;
-        let network_address = self.network_address;
+    ColimaStartOptions::new()
+      .with_name(self.machine_name.clone())
+      .with_cpus(cpus)
+      .with_memory_gb(memory)
+      .with_disk_gb(disk)
+      .with_runtime(self.runtime)
+      .with_vm_type(self.vm_type)
+      .with_arch(self.arch)
+      .with_mount_type(self.mount_type)
+      .with_kubernetes(self.kubernetes)
+      .with_network_address(self.network_address)
+  }
 
-        let cpus_input = self.cpus_input.clone().unwrap();
-        let memory_input = self.memory_input.clone().unwrap();
-        let disk_input = self.disk_input.clone().unwrap();
+  pub fn render_with_machine(
+    &mut self,
+    machine: &ColimaVm,
+    window: &mut Window,
+    cx: &mut Context<Self>,
+  ) -> impl IntoElement {
+    // Ensure inputs are created with machine values
+    self.ensure_inputs(machine, window, cx);
+    let colors = cx.theme().colors;
 
-        // Helper to render form row
-        let render_form_row =
-            |label: &'static str, content: gpui::AnyElement, border: Hsla, fg: Hsla| {
-                h_flex()
-                    .w_full()
-                    .py(px(12.))
-                    .px(px(16.))
-                    .justify_between()
-                    .items_center()
-                    .border_b_1()
-                    .border_color(border)
-                    .child(Label::new(label).text_color(fg))
-                    .child(content)
-            };
+    // Clone state for closures
+    let runtime = self.runtime;
+    let vm_type = self.vm_type;
+    let arch = self.arch;
+    let mount_type = self.mount_type;
+    let kubernetes = self.kubernetes;
+    let network_address = self.network_address;
 
-        // Helper to render section header
-        let render_section_header = |title: &'static str, bg: Hsla, muted: Hsla| {
-            div()
-                .w_full()
-                .py(px(8.))
-                .px(px(16.))
-                .bg(bg)
-                .child(div().text_xs().text_color(muted).child(title))
-        };
+    let cpus_input = self.cpus_input.clone().unwrap();
+    let memory_input = self.memory_input.clone().unwrap();
+    let disk_input = self.disk_input.clone().unwrap();
 
-        v_flex()
+    // Helper to render form row
+    let render_form_row = |label: &'static str, content: gpui::AnyElement, border: Hsla, fg: Hsla| {
+      h_flex()
+        .w_full()
+        .py(px(12.))
+        .px(px(16.))
+        .justify_between()
+        .items_center()
+        .border_b_1()
+        .border_color(border)
+        .child(Label::new(label).text_color(fg))
+        .child(content)
+    };
+
+    // Helper to render section header
+    let render_section_header = |title: &'static str, bg: Hsla, muted: Hsla| {
+      div()
+        .w_full()
+        .py(px(8.))
+        .px(px(16.))
+        .bg(bg)
+        .child(div().text_xs().text_color(muted).child(title))
+    };
+
+    v_flex()
             .w_full()
             // Machine name (read-only)
             .child(render_form_row(
@@ -433,59 +432,58 @@ impl EditMachineDialog {
                             .child("Note: The machine will be stopped, reconfigured, and started with the new settings."),
                     ),
             )
-    }
+  }
 }
 
 impl Focusable for EditMachineDialog {
-    fn focus_handle(&self, _cx: &App) -> FocusHandle {
-        self.focus_handle.clone()
-    }
+  fn focus_handle(&self, _cx: &App) -> FocusHandle {
+    self.focus_handle.clone()
+  }
 }
 
 impl Render for EditMachineDialog {
-    fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
-        // Ensure inputs are created
-        self.ensure_inputs_default(window, cx);
-        let colors = cx.theme().colors.clone();
+  fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+    // Ensure inputs are created
+    self.ensure_inputs_default(window, cx);
+    let colors = cx.theme().colors;
 
-        // Clone state for closures
-        let runtime = self.runtime;
-        let vm_type = self.vm_type;
-        let arch = self.arch;
-        let mount_type = self.mount_type;
-        let kubernetes = self.kubernetes;
-        let network_address = self.network_address;
+    // Clone state for closures
+    let runtime = self.runtime;
+    let vm_type = self.vm_type;
+    let arch = self.arch;
+    let mount_type = self.mount_type;
+    let kubernetes = self.kubernetes;
+    let network_address = self.network_address;
 
-        let cpus_input = self.cpus_input.clone().unwrap();
-        let memory_input = self.memory_input.clone().unwrap();
-        let disk_input = self.disk_input.clone().unwrap();
+    let cpus_input = self.cpus_input.clone().unwrap();
+    let memory_input = self.memory_input.clone().unwrap();
+    let disk_input = self.disk_input.clone().unwrap();
 
-        // Helper to render form row
-        let render_form_row =
-            |label: &'static str, content: gpui::AnyElement, border: Hsla, fg: Hsla| {
-                h_flex()
-                    .w_full()
-                    .py(px(12.))
-                    .px(px(16.))
-                    .justify_between()
-                    .items_center()
-                    .border_b_1()
-                    .border_color(border)
-                    .child(Label::new(label).text_color(fg))
-                    .child(content)
-            };
+    // Helper to render form row
+    let render_form_row = |label: &'static str, content: gpui::AnyElement, border: Hsla, fg: Hsla| {
+      h_flex()
+        .w_full()
+        .py(px(12.))
+        .px(px(16.))
+        .justify_between()
+        .items_center()
+        .border_b_1()
+        .border_color(border)
+        .child(Label::new(label).text_color(fg))
+        .child(content)
+    };
 
-        // Helper to render section header
-        let render_section_header = |title: &'static str, bg: Hsla, muted: Hsla| {
-            div()
-                .w_full()
-                .py(px(8.))
-                .px(px(16.))
-                .bg(bg)
-                .child(div().text_xs().text_color(muted).child(title))
-        };
+    // Helper to render section header
+    let render_section_header = |title: &'static str, bg: Hsla, muted: Hsla| {
+      div()
+        .w_full()
+        .py(px(8.))
+        .px(px(16.))
+        .bg(bg)
+        .child(div().text_xs().text_color(muted).child(title))
+    };
 
-        v_flex()
+    v_flex()
             .w_full()
             // Machine name (read-only)
             .child(render_form_row(
@@ -719,5 +717,5 @@ impl Render for EditMachineDialog {
                             .child("Note: The machine will be stopped, reconfigured, and started with the new settings."),
                     ),
             )
-    }
+  }
 }

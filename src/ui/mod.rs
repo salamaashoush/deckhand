@@ -13,16 +13,4 @@ pub mod settings;
 pub mod setup_dialog;
 pub mod volumes;
 
-pub use activity::ActivityMonitorView;
-pub use compose::ComposeView;
-pub use containers::ContainersView;
-pub use deployments::DeploymentsView;
-pub use images::ImagesView;
-pub use machines::MachinesView;
-pub use networks::NetworksView;
-pub use pods::PodsView;
 pub use prune_dialog::{PruneDialog, PruneOptions};
-pub use services::ServicesView;
-pub use settings::SettingsDialog;
-pub use setup_dialog::{SetupDialog, is_colima_installed, is_docker_installed};
-pub use volumes::VolumesView;

@@ -1,109 +1,97 @@
-use gpui::{div, prelude::*, px, Context, Entity, Render, SharedString, Styled, Window};
+use gpui::{Context, Entity, Render, SharedString, Styled, Window, div, prelude::*, px};
 use gpui_component::{
-    button::{Button, ButtonVariants},
-    h_flex,
-    label::Label,
-    scroll::ScrollableElement,
-    theme::ActiveTheme,
-    v_flex, Icon, Sizable,
+  Icon, Sizable,
+  button::{Button, ButtonVariants},
+  h_flex,
+  label::Label,
+  scroll::ScrollableElement,
+  theme::ActiveTheme,
+  v_flex,
 };
 use std::collections::HashSet;
 
 use crate::assets::AppIcon;
-use crate::docker::{extract_compose_projects, ComposeProject, ComposeService};
+use crate::docker::{ComposeProject, ComposeService, extract_compose_projects};
 use crate::services;
-use crate::state::{docker_state, DockerState, StateChanged};
+use crate::state::{DockerState, StateChanged, docker_state};
 
 /// Docker Compose projects view
 pub struct ComposeView {
-    docker_state: Entity<DockerState>,
-    /// Set of expanded project names
-    expanded_projects: HashSet<String>,
+  docker_state: Entity<DockerState>,
+  /// Set of expanded project names
+  expanded_projects: HashSet<String>,
 }
 
 impl ComposeView {
-    pub fn new(_window: &mut Window, cx: &mut Context<Self>) -> Self {
-        let docker_state = docker_state(cx);
+  pub fn new(_window: &mut Window, cx: &mut Context<Self>) -> Self {
+    let docker_state = docker_state(cx);
 
-        // Subscribe to state changes
-        cx.subscribe(&docker_state, |this, _state, event: &StateChanged, cx| {
-            match event {
-                StateChanged::ContainersUpdated => {
-                    cx.notify();
-                }
-                _ => {}
-            }
-        })
-        .detach();
-
-        Self {
-            docker_state,
-            expanded_projects: HashSet::new(),
-        }
-    }
-
-    fn toggle_project(&mut self, project_name: &str, cx: &mut Context<Self>) {
-        if self.expanded_projects.contains(project_name) {
-            self.expanded_projects.remove(project_name);
-        } else {
-            self.expanded_projects.insert(project_name.to_string());
-        }
+    // Subscribe to state changes
+    cx.subscribe(&docker_state, |this, _state, event: &StateChanged, cx| {
+      if let StateChanged::ContainersUpdated = event {
         cx.notify();
+      }
+    })
+    .detach();
+
+    Self {
+      docker_state,
+      expanded_projects: HashSet::new(),
     }
+  }
 
-    fn render_empty(&self, cx: &Context<Self>) -> impl IntoElement {
-        let colors = &cx.theme().colors;
-
-        div()
-            .size_full()
-            .flex()
-            .items_center()
-            .justify_center()
-            .child(
-                v_flex()
-                    .items_center()
-                    .gap(px(16.))
-                    .child(
-                        Icon::new(AppIcon::Container)
-                            .size(px(48.))
-                            .text_color(colors.muted_foreground),
-                    )
-                    .child(
-                        div()
-                            .text_color(colors.muted_foreground)
-                            .child("No Docker Compose projects found"),
-                    )
-                    .child(
-                        div()
-                            .text_xs()
-                            .text_color(colors.muted_foreground)
-                            .child("Start a compose project to see it here"),
-                    ),
-            )
+  fn toggle_project(&mut self, project_name: &str, cx: &mut Context<Self>) {
+    if self.expanded_projects.contains(project_name) {
+      self.expanded_projects.remove(project_name);
+    } else {
+      self.expanded_projects.insert(project_name.to_string());
     }
+    cx.notify();
+  }
 
-    fn render_project(
-        &self,
-        project: &ComposeProject,
-        is_expanded: bool,
-        cx: &mut Context<Self>,
-    ) -> impl IntoElement {
-        let colors = cx.theme().colors.clone();
-        let project_name = project.name.clone();
-        let project_name_for_toggle = project_name.clone();
-        let project_name_for_up = project_name.clone();
-        let project_name_for_down = project_name.clone();
-        let project_name_for_restart = project_name.clone();
+  fn render_empty(&self, cx: &Context<Self>) -> impl IntoElement {
+    let colors = &cx.theme().colors;
 
-        let status_color = if project.is_all_running() {
-            colors.success
-        } else if project.is_all_stopped() {
-            colors.muted_foreground
-        } else {
-            colors.warning
-        };
+    div().size_full().flex().items_center().justify_center().child(
+      v_flex()
+        .items_center()
+        .gap(px(16.))
+        .child(
+          Icon::new(AppIcon::Container)
+            .size(px(48.))
+            .text_color(colors.muted_foreground),
+        )
+        .child(
+          div()
+            .text_color(colors.muted_foreground)
+            .child("No Docker Compose projects found"),
+        )
+        .child(
+          div()
+            .text_xs()
+            .text_color(colors.muted_foreground)
+            .child("Start a compose project to see it here"),
+        ),
+    )
+  }
 
-        v_flex()
+  fn render_project(&self, project: &ComposeProject, is_expanded: bool, cx: &mut Context<Self>) -> impl IntoElement {
+    let colors = cx.theme().colors;
+    let project_name = project.name.clone();
+    let project_name_for_toggle = project_name.clone();
+    let project_name_for_up = project_name.clone();
+    let project_name_for_down = project_name.clone();
+    let project_name_for_restart = project_name.clone();
+
+    let status_color = if project.is_all_running() {
+      colors.success
+    } else if project.is_all_stopped() {
+      colors.muted_foreground
+    } else {
+      colors.warning
+    };
+
+    v_flex()
             .w_full()
             // Project header row
             .child(
@@ -203,19 +191,19 @@ impl ComposeView {
                 },
                 |el, services| el.children(services),
             )
-    }
+  }
 
-    fn render_service(&self, service: &ComposeService, cx: &mut Context<Self>) -> impl IntoElement {
-        let colors = cx.theme().colors.clone();
-        let container_id = service.container_id.clone();
+  fn render_service(&self, service: &ComposeService, cx: &mut Context<Self>) -> impl IntoElement {
+    let colors = cx.theme().colors;
+    let container_id = service.container_id.clone();
 
-        let status_color = if service.state.is_running() {
-            colors.success
-        } else {
-            colors.muted_foreground
-        };
+    let status_color = if service.state.is_running() {
+      colors.success
+    } else {
+      colors.muted_foreground
+    };
 
-        h_flex()
+    h_flex()
             .id(SharedString::from(format!("service-{}", service.container_id)))
             .w_full()
             .h(px(36.))
@@ -266,18 +254,18 @@ impl ComposeView {
                     .text_color(colors.muted_foreground)
                     .child(service.state.to_string()),
             )
-    }
+  }
 }
 
 impl Render for ComposeView {
-    fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
-        let colors = cx.theme().colors.clone();
+  fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+    let colors = cx.theme().colors;
 
-        // Get containers and extract compose projects
-        let containers = self.docker_state.read(cx).containers.clone();
-        let projects = extract_compose_projects(&containers);
+    // Get containers and extract compose projects
+    let containers = self.docker_state.read(cx).containers.clone();
+    let projects = extract_compose_projects(&containers);
 
-        div()
+    div()
             .size_full()
             .bg(colors.background)
             .flex()
@@ -332,5 +320,5 @@ impl Render for ComposeView {
                     .overflow_y_scrollbar()
                     .child(content)
             })
-    }
+  }
 }

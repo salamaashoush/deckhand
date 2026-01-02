@@ -1,201 +1,202 @@
 use gpui::{
-    div, prelude::*, px, App, Context, Entity, FocusHandle, Focusable, Hsla, ParentElement, Render,
-    SharedString, Styled, Window,
+  App, Context, Entity, FocusHandle, Focusable, Hsla, ParentElement, Render, SharedString, Styled, Window, div,
+  prelude::*, px,
 };
 use gpui_component::{
-    button::{Button, ButtonVariants},
-    h_flex,
-    input::{Input, InputState},
-    label::Label,
-    scroll::ScrollableElement,
-    select::{Select, SelectItem, SelectState},
-    theme::ActiveTheme,
-    v_flex, IconName, IndexPath, Sizable,
+  IconName, IndexPath, Sizable,
+  button::{Button, ButtonVariants},
+  h_flex,
+  input::{Input, InputState},
+  label::Label,
+  scroll::ScrollableElement,
+  select::{Select, SelectItem, SelectState},
+  theme::ActiveTheme,
+  v_flex,
 };
 
 /// Driver options for volume
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum VolumeDriver {
-    #[default]
-    Local,
+  #[default]
+  Local,
 }
 
 impl VolumeDriver {
-    pub fn label(&self) -> &'static str {
-        match self {
-            VolumeDriver::Local => "local",
-        }
+  pub fn label(&self) -> &'static str {
+    match self {
+      VolumeDriver::Local => "local",
     }
+  }
 
-    pub fn as_docker_arg(&self) -> &'static str {
-        match self {
-            VolumeDriver::Local => "local",
-        }
+  pub fn as_docker_arg(&self) -> &'static str {
+    match self {
+      VolumeDriver::Local => "local",
     }
+  }
 
-    pub fn all() -> Vec<VolumeDriver> {
-        vec![VolumeDriver::Local]
-    }
+  pub fn all() -> Vec<VolumeDriver> {
+    vec![VolumeDriver::Local]
+  }
 }
 
 impl SelectItem for VolumeDriver {
-    type Value = VolumeDriver;
+  type Value = VolumeDriver;
 
-    fn title(&self) -> SharedString {
-        self.label().into()
-    }
+  fn title(&self) -> SharedString {
+    self.label().into()
+  }
 
-    fn value(&self) -> &Self::Value {
-        self
-    }
+  fn value(&self) -> &Self::Value {
+    self
+  }
 }
 
 /// Options for creating a new volume
 #[derive(Debug, Clone, Default)]
 pub struct CreateVolumeOptions {
-    pub name: String,
-    pub driver: VolumeDriver,
-    pub labels: Vec<(String, String)>,
-    pub driver_opts: Vec<(String, String)>,
+  pub name: String,
+  pub driver: VolumeDriver,
+  pub labels: Vec<(String, String)>,
+  pub driver_opts: Vec<(String, String)>,
 }
 
 /// Dialog for creating a new volume
 pub struct CreateVolumeDialog {
-    focus_handle: FocusHandle,
+  focus_handle: FocusHandle,
 
-    // Input states
-    name_input: Option<Entity<InputState>>,
-    label_key_input: Option<Entity<InputState>>,
-    label_value_input: Option<Entity<InputState>>,
+  // Input states
+  name_input: Option<Entity<InputState>>,
+  label_key_input: Option<Entity<InputState>>,
+  label_value_input: Option<Entity<InputState>>,
 
-    // Select states
-    driver_select: Option<Entity<SelectState<Vec<VolumeDriver>>>>,
+  // Select states
+  driver_select: Option<Entity<SelectState<Vec<VolumeDriver>>>>,
 
-    // Labels list
-    labels: Vec<(String, String)>,
+  // Labels list
+  labels: Vec<(String, String)>,
 }
 
 impl CreateVolumeDialog {
-    pub fn new(cx: &mut Context<Self>) -> Self {
-        let focus_handle = cx.focus_handle();
+  pub fn new(cx: &mut Context<Self>) -> Self {
+    let focus_handle = cx.focus_handle();
 
-        Self {
-            focus_handle,
-            name_input: None,
-            label_key_input: None,
-            label_value_input: None,
-            driver_select: None,
-            labels: Vec::new(),
-        }
+    Self {
+      focus_handle,
+      name_input: None,
+      label_key_input: None,
+      label_value_input: None,
+      driver_select: None,
+      labels: Vec::new(),
+    }
+  }
+
+  fn ensure_inputs(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+    if self.name_input.is_none() {
+      self.name_input = Some(cx.new(|cx| InputState::new(window, cx).placeholder("Volume name (required)")));
     }
 
-    fn ensure_inputs(&mut self, window: &mut Window, cx: &mut Context<Self>) {
-        if self.name_input.is_none() {
-            self.name_input = Some(cx.new(|cx| {
-                InputState::new(window, cx).placeholder("Volume name (required)")
-            }));
-        }
-
-        if self.label_key_input.is_none() {
-            self.label_key_input =
-                Some(cx.new(|cx| InputState::new(window, cx).placeholder("Key")));
-        }
-
-        if self.label_value_input.is_none() {
-            self.label_value_input =
-                Some(cx.new(|cx| InputState::new(window, cx).placeholder("Value")));
-        }
-
-        if self.driver_select.is_none() {
-            self.driver_select = Some(cx.new(|cx| {
-                SelectState::new(VolumeDriver::all(), Some(IndexPath::new(0)), window, cx)
-            }));
-        }
+    if self.label_key_input.is_none() {
+      self.label_key_input = Some(cx.new(|cx| InputState::new(window, cx).placeholder("Key")));
     }
 
-    pub fn get_options(&self, cx: &App) -> CreateVolumeOptions {
-        let name = self
-            .name_input
-            .as_ref()
-            .map(|s| s.read(cx).text().to_string())
-            .unwrap_or_default();
-
-        let driver = self
-            .driver_select
-            .as_ref()
-            .and_then(|s| s.read(cx).selected_value().cloned())
-            .unwrap_or_default();
-
-        CreateVolumeOptions {
-            name,
-            driver,
-            labels: self.labels.clone(),
-            driver_opts: Vec::new(),
-        }
+    if self.label_value_input.is_none() {
+      self.label_value_input = Some(cx.new(|cx| InputState::new(window, cx).placeholder("Value")));
     }
+
+    if self.driver_select.is_none() {
+      self.driver_select =
+        Some(cx.new(|cx| SelectState::new(VolumeDriver::all(), Some(IndexPath::new(0)), window, cx)));
+    }
+  }
+
+  pub fn get_options(&self, cx: &App) -> CreateVolumeOptions {
+    let name = self
+      .name_input
+      .as_ref()
+      .map(|s| s.read(cx).text().to_string())
+      .unwrap_or_default();
+
+    let driver = self
+      .driver_select
+      .as_ref()
+      .and_then(|s| s.read(cx).selected_value().cloned())
+      .unwrap_or_default();
+
+    CreateVolumeOptions {
+      name,
+      driver,
+      labels: self.labels.clone(),
+      driver_opts: Vec::new(),
+    }
+  }
 }
 
 impl Focusable for CreateVolumeDialog {
-    fn focus_handle(&self, _cx: &App) -> FocusHandle {
-        self.focus_handle.clone()
-    }
+  fn focus_handle(&self, _cx: &App) -> FocusHandle {
+    self.focus_handle.clone()
+  }
 }
 
 impl Render for CreateVolumeDialog {
-    fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
-        self.ensure_inputs(window, cx);
-        let colors = cx.theme().colors.clone();
+  fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+    self.ensure_inputs(window, cx);
+    let colors = cx.theme().colors;
 
-        let name_input = self.name_input.clone().unwrap();
-        let driver_select = self.driver_select.clone().unwrap();
-        let label_key_input = self.label_key_input.clone();
-        let label_value_input = self.label_value_input.clone();
+    let name_input = self.name_input.clone().unwrap();
+    let driver_select = self.driver_select.clone().unwrap();
+    let label_key_input = self.label_key_input.clone();
+    let label_value_input = self.label_value_input.clone();
 
-        // Helper to render form row
-        let render_form_row = |label: &'static str, content: gpui::AnyElement, border: Hsla, fg: Hsla| {
-            h_flex()
-                .w_full()
-                .py(px(12.))
-                .px(px(16.))
-                .justify_between()
-                .items_center()
-                .border_b_1()
-                .border_color(border)
-                .child(Label::new(label).text_color(fg))
-                .child(content)
-        };
+    // Helper to render form row
+    let render_form_row = |label: &'static str, content: gpui::AnyElement, border: Hsla, fg: Hsla| {
+      h_flex()
+        .w_full()
+        .py(px(12.))
+        .px(px(16.))
+        .justify_between()
+        .items_center()
+        .border_b_1()
+        .border_color(border)
+        .child(Label::new(label).text_color(fg))
+        .child(content)
+    };
 
-        // Helper to render form row with description
-        let render_form_row_with_desc = |label: &'static str, description: &'static str, content: gpui::AnyElement, border: Hsla, fg: Hsla, muted: Hsla| {
-            h_flex()
-                .w_full()
-                .py(px(12.))
-                .px(px(16.))
-                .justify_between()
-                .items_center()
-                .border_b_1()
-                .border_color(border)
-                .child(
-                    v_flex()
-                        .gap(px(2.))
-                        .child(Label::new(label).text_color(fg))
-                        .child(div().text_xs().text_color(muted).child(description)),
-                )
-                .child(content)
-        };
+    // Helper to render form row with description
+    let render_form_row_with_desc = |label: &'static str,
+                                     description: &'static str,
+                                     content: gpui::AnyElement,
+                                     border: Hsla,
+                                     fg: Hsla,
+                                     muted: Hsla| {
+      h_flex()
+        .w_full()
+        .py(px(12.))
+        .px(px(16.))
+        .justify_between()
+        .items_center()
+        .border_b_1()
+        .border_color(border)
+        .child(
+          v_flex()
+            .gap(px(2.))
+            .child(Label::new(label).text_color(fg))
+            .child(div().text_xs().text_color(muted).child(description)),
+        )
+        .child(content)
+    };
 
-        // Helper to render section header
-        let render_section_header = |title: &'static str, bg: Hsla, muted: Hsla| {
-            div()
-                .w_full()
-                .py(px(8.))
-                .px(px(16.))
-                .bg(bg)
-                .child(div().text_xs().text_color(muted).child(title))
-        };
+    // Helper to render section header
+    let render_section_header = |title: &'static str, bg: Hsla, muted: Hsla| {
+      div()
+        .w_full()
+        .py(px(8.))
+        .px(px(16.))
+        .bg(bg)
+        .child(div().text_xs().text_color(muted).child(title))
+    };
 
-        // Build labels section
-        let labels_section = v_flex()
+    // Build labels section
+    let labels_section = v_flex()
             .w_full()
             .gap(px(8.))
             .p(px(16.))
@@ -280,7 +281,7 @@ impl Render for CreateVolumeDialog {
                     )
             }));
 
-        v_flex()
+    v_flex()
             .w_full()
             .max_h(px(500.))
             .overflow_y_scrollbar()
@@ -313,5 +314,5 @@ impl Render for CreateVolumeDialog {
             // Labels section
             .child(render_section_header("Labels", colors.sidebar, colors.muted_foreground))
             .child(labels_section)
-    }
+  }
 }

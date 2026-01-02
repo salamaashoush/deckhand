@@ -12,14 +12,14 @@ use crate::state::{init_docker_state, init_settings};
 
 /// Initialize all global services
 pub fn init_services(cx: &mut App) {
-    // Initialize tokio runtime first (required for Docker client)
-    gpui_tokio::init(cx);
+  // Initialize tokio runtime first (required for Docker client)
+  gpui_tokio::init(cx);
 
-    // Initialize state
-    init_docker_state(cx);
-    init_settings(cx);
+  // Initialize state
+  init_docker_state(cx);
+  init_settings(cx);
 
-    // Initialize services
-    init_task_manager(cx);
-    init_dispatcher(cx);
+  // Initialize services
+  init_task_manager(cx);
+  init_dispatcher(cx);
 }

@@ -1,16 +1,14 @@
-use gpui::{div, prelude::*, px, App, Context, Entity, Render, Styled, Window};
+use gpui::{App, Context, Entity, Render, Styled, Window, div, prelude::*, px};
 use gpui_component::{
-    button::{Button, ButtonVariants},
-    h_flex,
-    sidebar::{Sidebar, SidebarGroup, SidebarMenu, SidebarMenuItem},
-    theme::{ActiveTheme, Theme, ThemeMode},
-    Icon, IconName, Root, WindowExt,
+  IconName, Root, WindowExt,
+  button::{Button, ButtonVariants},
+  h_flex,
+  sidebar::{Sidebar, SidebarGroup, SidebarMenu, SidebarMenuItem},
+  theme::{ActiveTheme, Theme, ThemeMode},
 };
 
-use crate::assets::AppIcon;
-
 use crate::services::task_manager;
-use crate::state::{docker_state, CurrentView, DockerState, StateChanged};
+use crate::state::{CurrentView, DockerState, StateChanged, docker_state};
 use crate::ui::activity::ActivityMonitorView;
 use crate::ui::compose::ComposeView;
 use crate::ui::containers::ContainersView;
@@ -22,163 +20,163 @@ use crate::ui::pods::PodsView;
 use crate::ui::prune_dialog::PruneDialog;
 use crate::ui::services::ServicesView;
 use crate::ui::settings::SettingsView;
-use crate::ui::setup_dialog::{is_colima_installed, is_docker_installed, SetupDialog};
+use crate::ui::setup_dialog::{SetupDialog, is_colima_installed, is_docker_installed};
 use crate::ui::volumes::VolumesView;
 
 /// Main application - only handles layout and view switching
 pub struct DockerApp {
-    docker_state: Entity<DockerState>,
-    machines_view: Entity<MachinesView>,
-    containers_view: Entity<ContainersView>,
-    compose_view: Entity<ComposeView>,
-    volumes_view: Entity<VolumesView>,
-    images_view: Entity<ImagesView>,
-    networks_view: Entity<NetworksView>,
-    pods_view: Entity<PodsView>,
-    services_view: Entity<ServicesView>,
-    deployments_view: Entity<DeploymentsView>,
-    activity_view: Entity<ActivityMonitorView>,
-    settings_view: Entity<SettingsView>,
+  docker_state: Entity<DockerState>,
+  machines_view: Entity<MachinesView>,
+  containers_view: Entity<ContainersView>,
+  compose_view: Entity<ComposeView>,
+  volumes_view: Entity<VolumesView>,
+  images_view: Entity<ImagesView>,
+  networks_view: Entity<NetworksView>,
+  pods_view: Entity<PodsView>,
+  services_view: Entity<ServicesView>,
+  deployments_view: Entity<DeploymentsView>,
+  activity_view: Entity<ActivityMonitorView>,
+  settings_view: Entity<SettingsView>,
 }
 
 impl DockerApp {
-    pub fn new(window: &mut Window, cx: &mut Context<Self>) -> Self {
-        Theme::change(ThemeMode::Dark, Some(window), cx);
+  pub fn new(window: &mut Window, cx: &mut Context<Self>) -> Self {
+    Theme::change(ThemeMode::Dark, Some(window), cx);
 
-        let docker_state = docker_state(cx);
+    let docker_state = docker_state(cx);
 
-        // Subscribe to state changes for re-rendering on view changes
-        cx.subscribe(&docker_state, |_this, _state, event: &StateChanged, cx| {
-            if matches!(event, StateChanged::ViewChanged | StateChanged::Loading(_)) {
-                cx.notify();
-            }
+    // Subscribe to state changes for re-rendering on view changes
+    cx.subscribe(&docker_state, |_this, _state, event: &StateChanged, cx| {
+      if matches!(event, StateChanged::ViewChanged | StateChanged::Loading(_)) {
+        cx.notify();
+      }
+    })
+    .detach();
+
+    // Observe theme changes to re-render when theme is switched
+    cx.observe_global::<Theme>(|_this, cx| {
+      cx.notify();
+    })
+    .detach();
+
+    // Create self-contained views
+    let machines_view = cx.new(|cx| MachinesView::new(window, cx));
+    let containers_view = cx.new(|cx| ContainersView::new(window, cx));
+    let compose_view = cx.new(|cx| ComposeView::new(window, cx));
+    let volumes_view = cx.new(|cx| VolumesView::new(window, cx));
+    let images_view = cx.new(|cx| ImagesView::new(window, cx));
+    let networks_view = cx.new(|cx| NetworksView::new(window, cx));
+    let pods_view = cx.new(|cx| PodsView::new(window, cx));
+    let services_view = cx.new(|cx| ServicesView::new(window, cx));
+    let deployments_view = cx.new(|cx| DeploymentsView::new(window, cx));
+    let activity_view = cx.new(|cx| ActivityMonitorView::new(window, cx));
+    let settings_view = cx.new(SettingsView::new);
+
+    // Check if Docker/Colima are installed and show setup dialog if not
+    let colima_installed = is_colima_installed();
+    let docker_installed = is_docker_installed();
+
+    if !colima_installed || !docker_installed {
+      // Defer showing the dialog until after the window is ready
+      cx.defer_in(window, |this, window, cx| {
+        this.show_setup_dialog(window, cx);
+      });
+    }
+
+    Self {
+      docker_state,
+      machines_view,
+      containers_view,
+      compose_view,
+      volumes_view,
+      images_view,
+      networks_view,
+      pods_view,
+      services_view,
+      deployments_view,
+      activity_view,
+      settings_view,
+    }
+  }
+
+  fn show_setup_dialog(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+    let dialog_entity = cx.new(SetupDialog::new);
+
+    window.open_dialog(cx, move |dialog, _window, cx| {
+      let dialog_clone = dialog_entity.clone();
+      let colors = cx.theme().colors;
+
+      dialog
+        .title("Setup Required")
+        .min_w(px(550.))
+        .child(dialog_entity.clone())
+        .footer(move |_dialog_state, _, _window, _cx| {
+          let dialog_for_refresh = dialog_clone.clone();
+
+          vec![
+            Button::new("refresh")
+              .label("Check Again")
+              .ghost()
+              .on_click({
+                let dialog = dialog_for_refresh.clone();
+                move |_ev, _window, cx| {
+                  dialog.update(cx, |d, cx| {
+                    d.refresh_status(cx);
+                    cx.notify();
+                  });
+                }
+              })
+              .into_any_element(),
+            Button::new("continue")
+              .label("Continue Anyway")
+              .primary()
+              .on_click(move |_ev, window, cx| {
+                window.close_dialog(cx);
+              })
+              .into_any_element(),
+          ]
         })
-        .detach();
+    });
+  }
 
-        // Observe theme changes to re-render when theme is switched
-        cx.observe_global::<Theme>(|_this, cx| {
-            cx.notify();
+  fn show_prune_dialog(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+    let dialog_entity = cx.new(PruneDialog::new);
+
+    window.open_dialog(cx, move |dialog, _window, _cx| {
+      let dialog_clone = dialog_entity.clone();
+
+      dialog
+        .title("Prune Docker Resources")
+        .min_w(px(450.))
+        .child(dialog_entity.clone())
+        .footer(move |_dialog_state, _, _window, _cx| {
+          let dialog_for_prune = dialog_clone.clone();
+
+          vec![
+            Button::new("prune")
+              .label("Prune")
+              .primary()
+              .on_click({
+                let dialog = dialog_for_prune.clone();
+                move |_ev, window, cx| {
+                  let options = dialog.read(cx).get_options();
+                  if !options.is_empty() {
+                    crate::services::prune_docker(options, cx);
+                    window.close_dialog(cx);
+                  }
+                }
+              })
+              .into_any_element(),
+          ]
         })
-        .detach();
+    });
+  }
 
-        // Create self-contained views
-        let machines_view = cx.new(|cx| MachinesView::new(window, cx));
-        let containers_view = cx.new(|cx| ContainersView::new(window, cx));
-        let compose_view = cx.new(|cx| ComposeView::new(window, cx));
-        let volumes_view = cx.new(|cx| VolumesView::new(window, cx));
-        let images_view = cx.new(|cx| ImagesView::new(window, cx));
-        let networks_view = cx.new(|cx| NetworksView::new(window, cx));
-        let pods_view = cx.new(|cx| PodsView::new(window, cx));
-        let services_view = cx.new(|cx| ServicesView::new(window, cx));
-        let deployments_view = cx.new(|cx| DeploymentsView::new(window, cx));
-        let activity_view = cx.new(|cx| ActivityMonitorView::new(window, cx));
-        let settings_view = cx.new(|cx| SettingsView::new(cx));
+  fn render_sidebar(&self, cx: &mut Context<'_, Self>) -> impl IntoElement + use<> {
+    let state = self.docker_state.read(cx);
+    let current_view = state.current_view;
 
-        // Check if Docker/Colima are installed and show setup dialog if not
-        let colima_installed = is_colima_installed();
-        let docker_installed = is_docker_installed();
-
-        if !colima_installed || !docker_installed {
-            // Defer showing the dialog until after the window is ready
-            cx.defer_in(window, |this, window, cx| {
-                this.show_setup_dialog(window, cx);
-            });
-        }
-
-        Self {
-            docker_state,
-            machines_view,
-            containers_view,
-            compose_view,
-            volumes_view,
-            images_view,
-            networks_view,
-            pods_view,
-            services_view,
-            deployments_view,
-            activity_view,
-            settings_view,
-        }
-    }
-
-    fn show_setup_dialog(&mut self, window: &mut Window, cx: &mut Context<Self>) {
-        let dialog_entity = cx.new(|cx| SetupDialog::new(cx));
-
-        window.open_dialog(cx, move |dialog, _window, cx| {
-            let dialog_clone = dialog_entity.clone();
-            let colors = cx.theme().colors.clone();
-
-            dialog
-                .title("Setup Required")
-                .min_w(px(550.))
-                .child(dialog_entity.clone())
-                .footer(move |_dialog_state, _, _window, _cx| {
-                    let dialog_for_refresh = dialog_clone.clone();
-
-                    vec![
-                        Button::new("refresh")
-                            .label("Check Again")
-                            .ghost()
-                            .on_click({
-                                let dialog = dialog_for_refresh.clone();
-                                move |_ev, _window, cx| {
-                                    dialog.update(cx, |d, cx| {
-                                        d.refresh_status(cx);
-                                        cx.notify();
-                                    });
-                                }
-                            })
-                            .into_any_element(),
-                        Button::new("continue")
-                            .label("Continue Anyway")
-                            .primary()
-                            .on_click(move |_ev, window, cx| {
-                                window.close_dialog(cx);
-                            })
-                            .into_any_element(),
-                    ]
-                })
-        });
-    }
-
-    fn show_prune_dialog(&mut self, window: &mut Window, cx: &mut Context<Self>) {
-        let dialog_entity = cx.new(|cx| PruneDialog::new(cx));
-
-        window.open_dialog(cx, move |dialog, _window, _cx| {
-            let dialog_clone = dialog_entity.clone();
-
-            dialog
-                .title("Prune Docker Resources")
-                .min_w(px(450.))
-                .child(dialog_entity.clone())
-                .footer(move |_dialog_state, _, _window, _cx| {
-                    let dialog_for_prune = dialog_clone.clone();
-
-                    vec![
-                        Button::new("prune")
-                            .label("Prune")
-                            .primary()
-                            .on_click({
-                                let dialog = dialog_for_prune.clone();
-                                move |_ev, window, cx| {
-                                    let options = dialog.read(cx).get_options();
-                                    if !options.is_empty() {
-                                        crate::services::prune_docker(options, cx);
-                                        window.close_dialog(cx);
-                                    }
-                                }
-                            })
-                            .into_any_element(),
-                    ]
-                })
-        });
-    }
-
-    fn render_sidebar(&self, cx: &mut Context<'_, Self>) -> impl IntoElement + use<> {
-        let state = self.docker_state.read(cx);
-        let current_view = state.current_view;
-
-        Sidebar::left()
+    Sidebar::left()
             .collapsible(false)
             .pt(px(52.)) // Space for traffic lights
             .child(
@@ -295,94 +293,87 @@ impl DockerApp {
                         ),
                 ),
             )
-    }
+  }
 
-    fn render_content(&self, cx: &mut Context<'_, Self>) -> impl IntoElement + use<> {
-        let state = self.docker_state.read(cx);
+  fn render_content(&self, cx: &mut Context<'_, Self>) -> impl IntoElement + use<> {
+    let state = self.docker_state.read(cx);
 
-        match state.current_view {
-            CurrentView::Machines => div().size_full().child(self.machines_view.clone()),
-            CurrentView::Containers => div().size_full().child(self.containers_view.clone()),
-            CurrentView::Compose => div().size_full().child(self.compose_view.clone()),
-            CurrentView::Volumes => div().size_full().child(self.volumes_view.clone()),
-            CurrentView::Images => div().size_full().child(self.images_view.clone()),
-            CurrentView::Networks => div().size_full().child(self.networks_view.clone()),
-            CurrentView::Pods => div().size_full().child(self.pods_view.clone()),
-            CurrentView::Services => div().size_full().child(self.services_view.clone()),
-            CurrentView::Deployments => div().size_full().child(self.deployments_view.clone()),
-            CurrentView::ActivityMonitor => div().size_full().child(self.activity_view.clone()),
-            CurrentView::Settings => div().size_full().child(self.settings_view.clone()),
-            _ => {
-                // Placeholder for views not yet implemented
-                let colors = &cx.theme().colors;
-                div()
-                    .size_full()
-                    .bg(colors.background)
-                    .flex()
-                    .items_center()
-                    .justify_center()
-                    .child(
-                        div()
-                            .text_color(colors.muted_foreground)
-                            .child(format!("{:?} view coming soon", state.current_view)),
-                    )
-            }
-        }
-    }
-
-    fn render_task_bar(&self, cx: &App) -> Option<impl IntoElement + use<>> {
-        let tasks = task_manager(cx);
-        let running_tasks: Vec<_> = tasks
-            .read(cx)
-            .running_tasks()
-            .into_iter()
-            .cloned()
-            .collect();
-
-        if running_tasks.is_empty() {
-            return None;
-        }
-
+    match state.current_view {
+      CurrentView::Machines => div().size_full().child(self.machines_view.clone()),
+      CurrentView::Containers => div().size_full().child(self.containers_view.clone()),
+      CurrentView::Compose => div().size_full().child(self.compose_view.clone()),
+      CurrentView::Volumes => div().size_full().child(self.volumes_view.clone()),
+      CurrentView::Images => div().size_full().child(self.images_view.clone()),
+      CurrentView::Networks => div().size_full().child(self.networks_view.clone()),
+      CurrentView::Pods => div().size_full().child(self.pods_view.clone()),
+      CurrentView::Services => div().size_full().child(self.services_view.clone()),
+      CurrentView::Deployments => div().size_full().child(self.deployments_view.clone()),
+      CurrentView::ActivityMonitor => div().size_full().child(self.activity_view.clone()),
+      CurrentView::Settings => div().size_full().child(self.settings_view.clone()),
+      _ => {
+        // Placeholder for views not yet implemented
         let colors = &cx.theme().colors;
-
-        Some(
-            h_flex()
-                .w_full()
-                .py(px(6.))
-                .px(px(16.))
-                .bg(colors.background)
-                .border_b_1()
-                .border_color(colors.border)
-                .gap(px(16.))
-                .items_center()
-                .children(running_tasks.iter().map(|task| {
-                    h_flex().gap(px(8.)).items_center().child(
-                        div()
-                            .text_sm()
-                            .text_color(colors.link)
-                            .child(task.description.clone()),
-                    )
-                })),
-        )
+        div()
+          .size_full()
+          .bg(colors.background)
+          .flex()
+          .items_center()
+          .justify_center()
+          .child(
+            div()
+              .text_color(colors.muted_foreground)
+              .child(format!("{:?} view coming soon", state.current_view)),
+          )
+      }
     }
+  }
+
+  fn render_task_bar(&self, cx: &App) -> Option<impl IntoElement + use<>> {
+    let tasks = task_manager(cx);
+    let running_tasks: Vec<_> = tasks.read(cx).running_tasks().into_iter().cloned().collect();
+
+    if running_tasks.is_empty() {
+      return None;
+    }
+
+    let colors = &cx.theme().colors;
+
+    Some(
+      h_flex()
+        .w_full()
+        .py(px(6.))
+        .px(px(16.))
+        .bg(colors.background)
+        .border_b_1()
+        .border_color(colors.border)
+        .gap(px(16.))
+        .items_center()
+        .children(running_tasks.iter().map(|task| {
+          h_flex()
+            .gap(px(8.))
+            .items_center()
+            .child(div().text_sm().text_color(colors.link).child(task.description.clone()))
+        })),
+    )
+  }
 }
 
 impl Render for DockerApp {
-    fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
-        // Required layers for gpui-component
-        let notification_layer = Root::render_notification_layer(window, cx);
-        let dialog_layer = Root::render_dialog_layer(window, cx);
+  fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+    // Required layers for gpui-component
+    let notification_layer = Root::render_notification_layer(window, cx);
+    let dialog_layer = Root::render_dialog_layer(window, cx);
 
-        let sidebar = self.render_sidebar(cx);
-        let content = self.render_content(cx);
-        let task_bar = self.render_task_bar(cx);
+    let sidebar = self.render_sidebar(cx);
+    let content = self.render_content(cx);
+    let task_bar = self.render_task_bar(cx);
 
-        // Get colors after mutable borrows are done
-        let colors = &cx.theme().colors;
-        let background = colors.background;
-        let border = colors.border;
+    // Get colors after mutable borrows are done
+    let colors = &cx.theme().colors;
+    let background = colors.background;
+    let border = colors.border;
 
-        h_flex()
+    h_flex()
             .size_full()
             .bg(background)
             .overflow_hidden()
@@ -409,5 +400,5 @@ impl Render for DockerApp {
             // gpui-component layers
             .children(notification_layer)
             .children(dialog_layer)
-    }
+  }
 }

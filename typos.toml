@@ -1,0 +1,36 @@
+# typos configuration for Deckhand
+# https://github.com/crate-ci/typos
+
+[files]
+extend-exclude = [
+    "Cargo.lock",
+    "target/",
+    "*.icns",
+    "*.png",
+    "*.jpg",
+    "*.jpeg",
+    "*.gif",
+    "*.ico",
+]
+
+[default]
+extend-ignore-identifiers-re = [
+    # Common Rust/Docker identifiers that look like typos
+    "pty",
+    "tty",
+    "pty_terminal",
+]
+
+[default.extend-words]
+# Technical terms that are correct
+pty = "pty"
+tty = "tty"
+deckhand = "deckhand"
+colima = "colima"
+kubectl = "kubectl"
+
+[type.rust]
+extend-ignore-identifiers-re = [
+    # Rust-specific patterns
+    "cx",
+]

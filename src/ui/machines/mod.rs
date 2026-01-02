@@ -4,5 +4,4 @@ mod edit_dialog;
 mod list;
 mod view;
 
-pub use edit_dialog::EditMachineDialog;
 pub use view::MachinesView;

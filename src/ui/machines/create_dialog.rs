@@ -1,173 +1,177 @@
 use gpui::{
-    div, prelude::*, px, App, Context, Entity, FocusHandle, Focusable, Hsla, ParentElement, Render,
-    Styled, Window,
+  App, Context, Entity, FocusHandle, Focusable, Hsla, ParentElement, Render, Styled, Window, div, prelude::*, px,
 };
 use gpui_component::{
-    h_flex, v_flex,
-    button::{Button, ButtonVariants},
-    input::{Input, InputState},
-    switch::Switch,
-    label::Label,
-    theme::ActiveTheme,
-    Sizable,
+  Sizable,
+  button::{Button, ButtonVariants},
+  h_flex,
+  input::{Input, InputState},
+  label::Label,
+  switch::Switch,
+  theme::ActiveTheme,
+  v_flex,
 };
 
 use crate::colima::{ColimaStartOptions, MountType, VmArch, VmRuntime, VmType};
 
 /// Form state for creating a new Colima machine
 pub struct CreateMachineDialog {
-    focus_handle: FocusHandle,
+  focus_handle: FocusHandle,
 
-    // Input states - created lazily
-    name_input: Option<Entity<InputState>>,
-    cpus_input: Option<Entity<InputState>>,
-    memory_input: Option<Entity<InputState>>,
-    disk_input: Option<Entity<InputState>>,
+  // Input states - created lazily
+  name_input: Option<Entity<InputState>>,
+  cpus_input: Option<Entity<InputState>>,
+  memory_input: Option<Entity<InputState>>,
+  disk_input: Option<Entity<InputState>>,
 
-    // Selection state
-    runtime: VmRuntime,
-    vm_type: VmType,
-    arch: VmArch,
-    mount_type: MountType,
-    kubernetes: bool,
-    network_address: bool,
+  // Selection state
+  runtime: VmRuntime,
+  vm_type: VmType,
+  arch: VmArch,
+  mount_type: MountType,
+  kubernetes: bool,
+  network_address: bool,
 }
 
 impl CreateMachineDialog {
-    pub fn new(cx: &mut Context<Self>) -> Self {
-        let focus_handle = cx.focus_handle();
+  pub fn new(cx: &mut Context<Self>) -> Self {
+    let focus_handle = cx.focus_handle();
 
-        Self {
-            focus_handle,
-            name_input: None,
-            cpus_input: None,
-            memory_input: None,
-            disk_input: None,
-            runtime: VmRuntime::Docker,
-            vm_type: VmType::default(),
-            arch: VmArch::default(),
-            mount_type: MountType::default(),
-            kubernetes: false,
-            network_address: false,
-        }
+    Self {
+      focus_handle,
+      name_input: None,
+      cpus_input: None,
+      memory_input: None,
+      disk_input: None,
+      runtime: VmRuntime::Docker,
+      vm_type: VmType::default(),
+      arch: VmArch::default(),
+      mount_type: MountType::default(),
+      kubernetes: false,
+      network_address: false,
+    }
+  }
+
+  fn ensure_inputs(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+    if self.name_input.is_none() {
+      self.name_input = Some(cx.new(|cx| {
+        let mut state = InputState::new(window, cx).placeholder("Machine name");
+        state.insert("default", window, cx);
+        state
+      }));
     }
 
-    fn ensure_inputs(&mut self, window: &mut Window, cx: &mut Context<Self>) {
-        if self.name_input.is_none() {
-            self.name_input = Some(cx.new(|cx| {
-                let mut state = InputState::new(window, cx)
-                    .placeholder("Machine name");
-                state.insert("default", window, cx);
-                state
-            }));
-        }
-
-        if self.cpus_input.is_none() {
-            self.cpus_input = Some(cx.new(|cx| {
-                let mut state = InputState::new(window, cx)
-                    .placeholder("CPUs");
-                state.insert("2", window, cx);
-                state
-            }));
-        }
-
-        if self.memory_input.is_none() {
-            self.memory_input = Some(cx.new(|cx| {
-                let mut state = InputState::new(window, cx)
-                    .placeholder("Memory (GB)");
-                state.insert("2", window, cx);
-                state
-            }));
-        }
-
-        if self.disk_input.is_none() {
-            self.disk_input = Some(cx.new(|cx| {
-                let mut state = InputState::new(window, cx)
-                    .placeholder("Disk (GB)");
-                state.insert("60", window, cx);
-                state
-            }));
-        }
+    if self.cpus_input.is_none() {
+      self.cpus_input = Some(cx.new(|cx| {
+        let mut state = InputState::new(window, cx).placeholder("CPUs");
+        state.insert("2", window, cx);
+        state
+      }));
     }
 
-    pub fn get_options(&self, cx: &App) -> ColimaStartOptions {
-        let name = self.name_input.as_ref()
-            .map(|s| s.read(cx).text().to_string())
-            .unwrap_or_else(|| "default".to_string());
-        let cpus: u32 = self.cpus_input.as_ref()
-            .map(|s| s.read(cx).text().to_string().parse().unwrap_or(2))
-            .unwrap_or(2);
-        let memory: u32 = self.memory_input.as_ref()
-            .map(|s| s.read(cx).text().to_string().parse().unwrap_or(2))
-            .unwrap_or(2);
-        let disk: u32 = self.disk_input.as_ref()
-            .map(|s| s.read(cx).text().to_string().parse().unwrap_or(60))
-            .unwrap_or(60);
-
-        ColimaStartOptions::new()
-            .with_name(name)
-            .with_cpus(cpus)
-            .with_memory_gb(memory)
-            .with_disk_gb(disk)
-            .with_runtime(self.runtime)
-            .with_vm_type(self.vm_type)
-            .with_arch(self.arch)
-            .with_mount_type(self.mount_type)
-            .with_kubernetes(self.kubernetes)
-            .with_network_address(self.network_address)
+    if self.memory_input.is_none() {
+      self.memory_input = Some(cx.new(|cx| {
+        let mut state = InputState::new(window, cx).placeholder("Memory (GB)");
+        state.insert("2", window, cx);
+        state
+      }));
     }
+
+    if self.disk_input.is_none() {
+      self.disk_input = Some(cx.new(|cx| {
+        let mut state = InputState::new(window, cx).placeholder("Disk (GB)");
+        state.insert("60", window, cx);
+        state
+      }));
+    }
+  }
+
+  pub fn get_options(&self, cx: &App) -> ColimaStartOptions {
+    let name = self
+      .name_input
+      .as_ref()
+      .map(|s| s.read(cx).text().to_string())
+      .unwrap_or_else(|| "default".to_string());
+    let cpus: u32 = self
+      .cpus_input
+      .as_ref()
+      .map(|s| s.read(cx).text().to_string().parse().unwrap_or(2))
+      .unwrap_or(2);
+    let memory: u32 = self
+      .memory_input
+      .as_ref()
+      .map(|s| s.read(cx).text().to_string().parse().unwrap_or(2))
+      .unwrap_or(2);
+    let disk: u32 = self
+      .disk_input
+      .as_ref()
+      .map(|s| s.read(cx).text().to_string().parse().unwrap_or(60))
+      .unwrap_or(60);
+
+    ColimaStartOptions::new()
+      .with_name(name)
+      .with_cpus(cpus)
+      .with_memory_gb(memory)
+      .with_disk_gb(disk)
+      .with_runtime(self.runtime)
+      .with_vm_type(self.vm_type)
+      .with_arch(self.arch)
+      .with_mount_type(self.mount_type)
+      .with_kubernetes(self.kubernetes)
+      .with_network_address(self.network_address)
+  }
 }
 
 impl Focusable for CreateMachineDialog {
-    fn focus_handle(&self, _cx: &App) -> FocusHandle {
-        self.focus_handle.clone()
-    }
+  fn focus_handle(&self, _cx: &App) -> FocusHandle {
+    self.focus_handle.clone()
+  }
 }
 
 impl Render for CreateMachineDialog {
-    fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
-        // Ensure inputs are created
-        self.ensure_inputs(window, cx);
-        let colors = cx.theme().colors.clone();
+  fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+    // Ensure inputs are created
+    self.ensure_inputs(window, cx);
+    let colors = cx.theme().colors;
 
-        // Clone state for closures
-        let runtime = self.runtime;
-        let vm_type = self.vm_type;
-        let arch = self.arch;
-        let mount_type = self.mount_type;
-        let kubernetes = self.kubernetes;
-        let network_address = self.network_address;
+    // Clone state for closures
+    let runtime = self.runtime;
+    let vm_type = self.vm_type;
+    let arch = self.arch;
+    let mount_type = self.mount_type;
+    let kubernetes = self.kubernetes;
+    let network_address = self.network_address;
 
-        let name_input = self.name_input.clone().unwrap();
-        let cpus_input = self.cpus_input.clone().unwrap();
-        let memory_input = self.memory_input.clone().unwrap();
-        let disk_input = self.disk_input.clone().unwrap();
+    let name_input = self.name_input.clone().unwrap();
+    let cpus_input = self.cpus_input.clone().unwrap();
+    let memory_input = self.memory_input.clone().unwrap();
+    let disk_input = self.disk_input.clone().unwrap();
 
-        // Helper to render form row
-        let render_form_row = |label: &'static str, content: gpui::AnyElement, border: Hsla, fg: Hsla| {
-            h_flex()
-                .w_full()
-                .py(px(12.))
-                .px(px(16.))
-                .justify_between()
-                .items_center()
-                .border_b_1()
-                .border_color(border)
-                .child(Label::new(label).text_color(fg))
-                .child(content)
-        };
+    // Helper to render form row
+    let render_form_row = |label: &'static str, content: gpui::AnyElement, border: Hsla, fg: Hsla| {
+      h_flex()
+        .w_full()
+        .py(px(12.))
+        .px(px(16.))
+        .justify_between()
+        .items_center()
+        .border_b_1()
+        .border_color(border)
+        .child(Label::new(label).text_color(fg))
+        .child(content)
+    };
 
-        // Helper to render section header
-        let render_section_header = |title: &'static str, bg: Hsla, muted: Hsla| {
-            div()
-                .w_full()
-                .py(px(8.))
-                .px(px(16.))
-                .bg(bg)
-                .child(div().text_xs().text_color(muted).child(title))
-        };
+    // Helper to render section header
+    let render_section_header = |title: &'static str, bg: Hsla, muted: Hsla| {
+      div()
+        .w_full()
+        .py(px(8.))
+        .px(px(16.))
+        .bg(bg)
+        .child(div().text_xs().text_color(muted).child(title))
+    };
 
-        v_flex()
+    v_flex()
             .w_full()
             // Name row
             .child(render_form_row(
@@ -360,5 +364,5 @@ impl Render for CreateMachineDialog {
                 colors.border,
                 colors.foreground,
             ))
-    }
+  }
 }
