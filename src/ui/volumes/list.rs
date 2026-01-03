@@ -68,7 +68,7 @@ impl ListDelegate for VolumeListDelegate {
     &mut self,
     ix: IndexPath,
     _window: &mut Window,
-    cx: &mut Context<ListState<Self>>,
+    cx: &mut Context<'_, ListState<Self>>,
   ) -> Option<Self::Item> {
     let volumes = self.filtered_volumes(cx);
     let volume = volumes.get(ix.row)?;
@@ -160,7 +160,7 @@ impl ListDelegate for VolumeListDelegate {
     Some(item)
   }
 
-  fn set_selected_index(&mut self, ix: Option<IndexPath>, _window: &mut Window, cx: &mut Context<ListState<Self>>) {
+  fn set_selected_index(&mut self, ix: Option<IndexPath>, _window: &mut Window, cx: &mut Context<'_, ListState<Self>>) {
     self.selected_index = ix;
     cx.notify();
   }
@@ -176,7 +176,7 @@ pub struct VolumeList {
 }
 
 impl VolumeList {
-  pub fn new(window: &mut Window, cx: &mut Context<Self>) -> Self {
+  pub fn new(window: &mut Window, cx: &mut Context<'_, Self>) -> Self {
     let docker_state = docker_state(cx);
 
     let delegate = VolumeListDelegate {
@@ -220,14 +220,14 @@ impl VolumeList {
     }
   }
 
-  fn ensure_search_input(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+  fn ensure_search_input(&mut self, window: &mut Window, cx: &mut Context<'_, Self>) {
     if self.search_input.is_none() {
       let input_state = cx.new(|cx| InputState::new(window, cx).placeholder("Search volumes..."));
       self.search_input = Some(input_state);
     }
   }
 
-  fn sync_search_query(&mut self, cx: &mut Context<Self>) {
+  fn sync_search_query(&mut self, cx: &mut Context<'_, Self>) {
     if let Some(input) = &self.search_input {
       let current_text = input.read(cx).text().to_string();
       if current_text != self.search_query {
@@ -240,7 +240,7 @@ impl VolumeList {
     }
   }
 
-  fn toggle_search(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+  fn toggle_search(&mut self, window: &mut Window, cx: &mut Context<'_, Self>) {
     self.search_visible = !self.search_visible;
     if self.search_visible {
       self.ensure_search_input(window, cx);
@@ -255,7 +255,7 @@ impl VolumeList {
     cx.notify();
   }
 
-  fn render_empty(&self, cx: &mut Context<Self>) -> gpui::Div {
+  fn render_empty(&self, cx: &mut Context<'_, Self>) -> gpui::Div {
     let colors = &cx.theme().colors;
 
     v_flex()
@@ -300,7 +300,7 @@ impl VolumeList {
     bytesize::ByteSize(total as u64).to_string()
   }
 
-  fn render_no_results(&self, cx: &mut Context<Self>) -> gpui::Div {
+  fn render_no_results(&self, cx: &mut Context<'_, Self>) -> gpui::Div {
     let colors = &cx.theme().colors;
 
     v_flex()
@@ -339,7 +339,7 @@ impl VolumeList {
 impl gpui::EventEmitter<VolumeListEvent> for VolumeList {}
 
 impl Render for VolumeList {
-  fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+  fn render(&mut self, window: &mut Window, cx: &mut Context<'_, Self>) -> impl IntoElement {
     let state = self.docker_state.read(cx);
     let total_count = state.volumes.len();
     let total_size = self.calculate_total_size(cx);

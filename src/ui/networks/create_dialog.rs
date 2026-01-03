@@ -25,7 +25,7 @@ pub struct CreateNetworkDialog {
 }
 
 impl CreateNetworkDialog {
-  pub fn new(cx: &mut Context<Self>) -> Self {
+  pub fn new(cx: &mut Context<'_, Self>) -> Self {
     let focus_handle = cx.focus_handle();
 
     Self {
@@ -36,7 +36,7 @@ impl CreateNetworkDialog {
     }
   }
 
-  fn ensure_inputs(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+  fn ensure_inputs(&mut self, window: &mut Window, cx: &mut Context<'_, Self>) {
     if self.name_input.is_none() {
       self.name_input = Some(cx.new(|cx| InputState::new(window, cx).placeholder("Name")));
     }
@@ -95,7 +95,7 @@ impl Focusable for CreateNetworkDialog {
 }
 
 impl Render for CreateNetworkDialog {
-  fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+  fn render(&mut self, window: &mut Window, cx: &mut Context<'_, Self>) -> impl IntoElement {
     self.ensure_inputs(window, cx);
 
     let colors = &cx.theme().colors;

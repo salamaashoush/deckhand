@@ -2,13 +2,12 @@ use gpui::{Context, Entity, Render, Styled, Window, div, prelude::*, px};
 use gpui_component::{
   WindowExt,
   button::{Button, ButtonVariants},
-  notification::NotificationType,
   theme::ActiveTheme,
   v_flex,
 };
 
 use crate::docker::NetworkInfo;
-use crate::services::{self, DispatcherEvent, dispatcher};
+use crate::services;
 use crate::state::{DockerState, StateChanged, docker_state};
 
 use super::create_dialog::CreateNetworkDialog;
@@ -17,15 +16,14 @@ use super::list::{NetworkList, NetworkListEvent};
 
 /// Self-contained Networks view - handles list, detail, and all state
 pub struct NetworksView {
-  docker_state: Entity<DockerState>,
+  _docker_state: Entity<DockerState>,
   network_list: Entity<NetworkList>,
   selected_network: Option<NetworkInfo>,
   active_tab: usize,
-  pending_notifications: Vec<(NotificationType, String)>,
 }
 
 impl NetworksView {
-  pub fn new(window: &mut Window, cx: &mut Context<Self>) -> Self {
+  pub fn new(window: &mut Window, cx: &mut Context<'_, Self>) -> Self {
     let docker_state = docker_state(cx);
 
     // Create network list entity
@@ -67,35 +65,15 @@ impl NetworksView {
     })
     .detach();
 
-    // Subscribe to dispatcher events for notifications
-    let disp = dispatcher(cx);
-    cx.subscribe(&disp, |this, _disp, event: &DispatcherEvent, cx| {
-      match event {
-        DispatcherEvent::TaskCompleted { name: _, message } => {
-          this
-            .pending_notifications
-            .push((NotificationType::Success, message.clone()));
-        }
-        DispatcherEvent::TaskFailed { name: _, error } => {
-          this
-            .pending_notifications
-            .push((NotificationType::Error, error.clone()));
-        }
-      }
-      cx.notify();
-    })
-    .detach();
-
     Self {
-      docker_state,
+      _docker_state: docker_state,
       network_list,
       selected_network: None,
       active_tab: 0,
-      pending_notifications: Vec::new(),
     }
   }
 
-  fn show_create_dialog(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+  fn show_create_dialog(&mut self, window: &mut Window, cx: &mut Context<'_, Self>) {
     let dialog_entity = cx.new(CreateNetworkDialog::new);
     let colors = cx.theme().colors;
 
@@ -136,26 +114,20 @@ impl NetworksView {
     });
   }
 
-  fn on_select_network(&mut self, network: &NetworkInfo, cx: &mut Context<Self>) {
+  fn on_select_network(&mut self, network: &NetworkInfo, cx: &mut Context<'_, Self>) {
     self.selected_network = Some(network.clone());
     self.active_tab = 0;
     cx.notify();
   }
 
-  fn on_tab_change(&mut self, tab: usize, cx: &mut Context<Self>) {
+  fn on_tab_change(&mut self, tab: usize, cx: &mut Context<'_, Self>) {
     self.active_tab = tab;
     cx.notify();
   }
 }
 
 impl Render for NetworksView {
-  fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
-    // Push any pending notifications
-    for (notification_type, message) in self.pending_notifications.drain(..) {
-      use gpui::SharedString;
-      window.push_notification((notification_type, SharedString::from(message)), cx);
-    }
-
+  fn render(&mut self, window: &mut Window, cx: &mut Context<'_, Self>) -> impl IntoElement {
     let colors = cx.theme().colors;
     let selected_network = self.selected_network.clone();
     let active_tab = self.active_tab;

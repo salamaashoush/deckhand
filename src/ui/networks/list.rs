@@ -103,7 +103,7 @@ impl ListDelegate for NetworkListDelegate {
     &mut self,
     section: usize,
     _window: &mut Window,
-    cx: &mut Context<ListState<Self>>,
+    cx: &mut Context<'_, ListState<Self>>,
   ) -> Option<impl IntoElement> {
     let colors = &cx.theme().colors;
     let (is_system, _) = self.sections.get(section)?;
@@ -126,7 +126,7 @@ impl ListDelegate for NetworkListDelegate {
     &mut self,
     ix: IndexPath,
     _window: &mut Window,
-    cx: &mut Context<ListState<Self>>,
+    cx: &mut Context<'_, ListState<Self>>,
   ) -> Option<Self::Item> {
     let network = self.get_network(ix)?.clone();
     let colors = &cx.theme().colors;
@@ -213,7 +213,7 @@ impl ListDelegate for NetworkListDelegate {
     Some(item)
   }
 
-  fn set_selected_index(&mut self, ix: Option<IndexPath>, _window: &mut Window, cx: &mut Context<ListState<Self>>) {
+  fn set_selected_index(&mut self, ix: Option<IndexPath>, _window: &mut Window, cx: &mut Context<'_, ListState<Self>>) {
     self.selected_index = ix;
     cx.notify();
   }
@@ -229,7 +229,7 @@ pub struct NetworkList {
 }
 
 impl NetworkList {
-  pub fn new(window: &mut Window, cx: &mut Context<Self>) -> Self {
+  pub fn new(window: &mut Window, cx: &mut Context<'_, Self>) -> Self {
     let docker_state = docker_state(cx);
 
     let mut delegate = NetworkListDelegate {
@@ -277,14 +277,14 @@ impl NetworkList {
     }
   }
 
-  fn ensure_search_input(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+  fn ensure_search_input(&mut self, window: &mut Window, cx: &mut Context<'_, Self>) {
     if self.search_input.is_none() {
       let input_state = cx.new(|cx| InputState::new(window, cx).placeholder("Search networks..."));
       self.search_input = Some(input_state);
     }
   }
 
-  fn sync_search_query(&mut self, cx: &mut Context<Self>) {
+  fn sync_search_query(&mut self, cx: &mut Context<'_, Self>) {
     if let Some(input) = &self.search_input {
       let current_text = input.read(cx).text().to_string();
       if current_text != self.search_query {
@@ -297,7 +297,7 @@ impl NetworkList {
     }
   }
 
-  fn toggle_search(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+  fn toggle_search(&mut self, window: &mut Window, cx: &mut Context<'_, Self>) {
     self.search_visible = !self.search_visible;
     if self.search_visible {
       self.ensure_search_input(window, cx);
@@ -312,7 +312,7 @@ impl NetworkList {
     cx.notify();
   }
 
-  fn render_empty(&self, cx: &mut Context<Self>) -> gpui::Div {
+  fn render_empty(&self, cx: &mut Context<'_, Self>) -> gpui::Div {
     let colors = &cx.theme().colors;
 
     v_flex()
@@ -351,7 +351,7 @@ impl NetworkList {
     self.docker_state.read(cx).networks.len()
   }
 
-  fn render_no_results(&self, cx: &mut Context<Self>) -> gpui::Div {
+  fn render_no_results(&self, cx: &mut Context<'_, Self>) -> gpui::Div {
     let colors = &cx.theme().colors;
 
     v_flex()
@@ -390,7 +390,7 @@ impl NetworkList {
 impl gpui::EventEmitter<NetworkListEvent> for NetworkList {}
 
 impl Render for NetworkList {
-  fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+  fn render(&mut self, window: &mut Window, cx: &mut Context<'_, Self>) -> impl IntoElement {
     let total_count = self.count_networks(cx);
     let colors = cx.theme().colors;
 

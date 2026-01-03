@@ -70,7 +70,7 @@ impl ListDelegate for ContainerListDelegate {
     &mut self,
     ix: IndexPath,
     _window: &mut Window,
-    cx: &mut Context<ListState<Self>>,
+    cx: &mut Context<'_, ListState<Self>>,
   ) -> Option<Self::Item> {
     let containers = self.filtered_containers(cx);
     let container = containers.get(ix.row)?;
@@ -95,6 +95,7 @@ impl ListDelegate for ContainerListDelegate {
 
     // Three-dot menu button
     let id = container_id.clone();
+    let container_name = container.name.clone();
     let running = is_running;
     let paused = container.state.is_paused();
     let row = ix.row;
@@ -106,6 +107,7 @@ impl ListDelegate for ContainerListDelegate {
       .dropdown_menu(move |menu, _window, _cx| {
         let mut menu = menu;
         let id = id.clone();
+        let name = container_name.clone();
 
         if running {
           // Running container actions
@@ -224,7 +226,30 @@ impl ListDelegate for ContainerListDelegate {
             }));
         }
 
+        // Common actions for all states
         menu = menu
+          .separator()
+          .item(PopupMenuItem::new("Rename").icon(IconName::Redo).on_click({
+            let id = id.clone();
+            let name = name.clone();
+            move |_, _, cx| {
+              services::request_rename_container(id.clone(), name.clone(), cx);
+            }
+          }))
+          .item(PopupMenuItem::new("Commit to Image").icon(IconName::Copy).on_click({
+            let id = id.clone();
+            let name = name.clone();
+            move |_, _, cx| {
+              services::request_commit_container(id.clone(), name.clone(), cx);
+            }
+          }))
+          .item(PopupMenuItem::new("Export").icon(IconName::ExternalLink).on_click({
+            let id = id.clone();
+            let name = name.clone();
+            move |_, _, cx| {
+              services::request_export_container(id.clone(), name.clone(), cx);
+            }
+          }))
           .separator()
           .item(PopupMenuItem::new("Delete").icon(Icon::new(AppIcon::Trash)).on_click({
             let id = id.clone();
@@ -304,7 +329,7 @@ impl ListDelegate for ContainerListDelegate {
     Some(item)
   }
 
-  fn set_selected_index(&mut self, ix: Option<IndexPath>, _window: &mut Window, cx: &mut Context<ListState<Self>>) {
+  fn set_selected_index(&mut self, ix: Option<IndexPath>, _window: &mut Window, cx: &mut Context<'_, ListState<Self>>) {
     self.selected_index = ix;
     cx.notify();
   }
@@ -320,7 +345,7 @@ pub struct ContainerList {
 }
 
 impl ContainerList {
-  pub fn new(window: &mut Window, cx: &mut Context<Self>) -> Self {
+  pub fn new(window: &mut Window, cx: &mut Context<'_, Self>) -> Self {
     let docker_state = docker_state(cx);
 
     let delegate = ContainerListDelegate {
@@ -332,7 +357,7 @@ impl ContainerList {
     let list_state = cx.new(|cx| ListState::new(delegate, window, cx));
 
     // Subscribe to list events
-    cx.subscribe(&list_state, |this, state, event: &ListEvent, cx| match event {
+    cx.subscribe(&list_state, |_this, state, event: &ListEvent, cx| match event {
       ListEvent::Select(ix) | ListEvent::Confirm(ix) => {
         let delegate = state.read(cx).delegate();
         let filtered = delegate.filtered_containers(cx);
@@ -364,14 +389,14 @@ impl ContainerList {
     }
   }
 
-  fn ensure_search_input(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+  fn ensure_search_input(&mut self, window: &mut Window, cx: &mut Context<'_, Self>) {
     if self.search_input.is_none() {
       let input_state = cx.new(|cx| InputState::new(window, cx).placeholder("Search containers..."));
       self.search_input = Some(input_state);
     }
   }
 
-  fn sync_search_query(&mut self, cx: &mut Context<Self>) {
+  fn sync_search_query(&mut self, cx: &mut Context<'_, Self>) {
     if let Some(input) = &self.search_input {
       let current_text = input.read(cx).text().to_string();
       if current_text != self.search_query {
@@ -384,7 +409,7 @@ impl ContainerList {
     }
   }
 
-  fn toggle_search(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+  fn toggle_search(&mut self, window: &mut Window, cx: &mut Context<'_, Self>) {
     self.search_visible = !self.search_visible;
     if self.search_visible {
       self.ensure_search_input(window, cx);
@@ -400,7 +425,7 @@ impl ContainerList {
     cx.notify();
   }
 
-  fn render_empty(&self, cx: &mut Context<Self>) -> gpui::Div {
+  fn render_empty(&self, cx: &mut Context<'_, Self>) -> gpui::Div {
     let colors = &cx.theme().colors;
 
     v_flex()
@@ -435,7 +460,7 @@ impl ContainerList {
       )
   }
 
-  fn render_no_results(&self, cx: &mut Context<Self>) -> gpui::Div {
+  fn render_no_results(&self, cx: &mut Context<'_, Self>) -> gpui::Div {
     let colors = &cx.theme().colors;
 
     v_flex()
@@ -474,7 +499,7 @@ impl ContainerList {
 impl gpui::EventEmitter<ContainerListEvent> for ContainerList {}
 
 impl Render for ContainerList {
-  fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+  fn render(&mut self, window: &mut Window, cx: &mut Context<'_, Self>) -> impl IntoElement {
     let state = self.docker_state.read(cx);
     let total_count = state.containers.len();
     let running_count = state.containers.iter().filter(|c| c.state.is_running()).count();

@@ -2,12 +2,11 @@ use gpui::{Context, Entity, Render, Styled, Window, div, prelude::*, px};
 use gpui_component::{
   WindowExt,
   button::{Button, ButtonVariants},
-  notification::NotificationType,
   theme::ActiveTheme,
 };
 
 use crate::docker::VolumeInfo;
-use crate::services::{self, DispatcherEvent, dispatcher};
+use crate::services;
 use crate::state::{DockerState, StateChanged, docker_state};
 
 use super::create_dialog::CreateVolumeDialog;
@@ -16,16 +15,15 @@ use super::list::{VolumeList, VolumeListEvent};
 
 /// Self-contained Volumes view - handles list, detail, and all state
 pub struct VolumesView {
-  docker_state: Entity<DockerState>,
+  _docker_state: Entity<DockerState>,
   volume_list: Entity<VolumeList>,
   selected_volume: Option<VolumeInfo>,
   active_tab: usize,
   volume_tab_state: VolumeTabState,
-  pending_notifications: Vec<(NotificationType, String)>,
 }
 
 impl VolumesView {
-  pub fn new(window: &mut Window, cx: &mut Context<Self>) -> Self {
+  pub fn new(window: &mut Window, cx: &mut Context<'_, Self>) -> Self {
     let docker_state = docker_state(cx);
 
     // Create volume list entity
@@ -96,36 +94,16 @@ impl VolumesView {
     })
     .detach();
 
-    // Subscribe to dispatcher events for notifications
-    let disp = dispatcher(cx);
-    cx.subscribe(&disp, |this, _disp, event: &DispatcherEvent, cx| {
-      match event {
-        DispatcherEvent::TaskCompleted { name: _, message } => {
-          this
-            .pending_notifications
-            .push((NotificationType::Success, message.clone()));
-        }
-        DispatcherEvent::TaskFailed { name: _, error } => {
-          this
-            .pending_notifications
-            .push((NotificationType::Error, error.clone()));
-        }
-      }
-      cx.notify();
-    })
-    .detach();
-
     Self {
-      docker_state,
+      _docker_state: docker_state,
       volume_list,
       selected_volume: None,
       active_tab: 0,
       volume_tab_state: VolumeTabState::new(),
-      pending_notifications: Vec::new(),
     }
   }
 
-  fn show_create_dialog(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+  fn show_create_dialog(&mut self, window: &mut Window, cx: &mut Context<'_, Self>) {
     let dialog_entity = cx.new(CreateVolumeDialog::new);
 
     window.open_dialog(cx, move |dialog, _window, _cx| {
@@ -163,7 +141,7 @@ impl VolumesView {
     });
   }
 
-  fn on_select_volume(&mut self, volume: &VolumeInfo, cx: &mut Context<Self>) {
+  fn on_select_volume(&mut self, volume: &VolumeInfo, cx: &mut Context<'_, Self>) {
     self.selected_volume = Some(volume.clone());
     self.active_tab = 0;
     // Reset file state when selecting new volume
@@ -171,7 +149,7 @@ impl VolumesView {
     cx.notify();
   }
 
-  fn on_tab_change(&mut self, tab: usize, cx: &mut Context<Self>) {
+  fn on_tab_change(&mut self, tab: usize, cx: &mut Context<'_, Self>) {
     self.active_tab = tab;
     // Load files when switching to Files tab
     if tab == 1 {
@@ -180,7 +158,7 @@ impl VolumesView {
     cx.notify();
   }
 
-  fn load_volume_files(&mut self, path: &str, cx: &mut Context<Self>) {
+  fn load_volume_files(&mut self, path: &str, cx: &mut Context<'_, Self>) {
     if let Some(ref volume) = self.selected_volume {
       self.volume_tab_state.files_loading = true;
       self.volume_tab_state.current_path = path.to_string();
@@ -192,19 +170,13 @@ impl VolumesView {
     }
   }
 
-  fn on_navigate_path(&mut self, path: &str, cx: &mut Context<Self>) {
+  fn on_navigate_path(&mut self, path: &str, cx: &mut Context<'_, Self>) {
     self.load_volume_files(path, cx);
   }
 }
 
 impl Render for VolumesView {
-  fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
-    // Push any pending notifications
-    for (notification_type, message) in self.pending_notifications.drain(..) {
-      use gpui::SharedString;
-      window.push_notification((notification_type, SharedString::from(message)), cx);
-    }
-
+  fn render(&mut self, window: &mut Window, cx: &mut Context<'_, Self>) -> impl IntoElement {
     let colors = cx.theme().colors;
     let selected_volume = self.selected_volume.clone();
     let active_tab = self.active_tab;

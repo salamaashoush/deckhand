@@ -2,12 +2,11 @@ use gpui::{Context, Entity, Render, Styled, Window, div, prelude::*, px};
 use gpui_component::{
   WindowExt,
   button::{Button, ButtonVariants},
-  notification::NotificationType,
   theme::ActiveTheme,
 };
 
 use crate::docker::ImageInfo;
-use crate::services::{self, DispatcherEvent, dispatcher};
+use crate::services;
 use crate::state::{DockerState, ImageInspectData, StateChanged, docker_state};
 
 use super::detail::ImageDetail;
@@ -16,16 +15,15 @@ use super::pull_dialog::PullImageDialog;
 
 /// Self-contained Images view - handles list, detail, and all state
 pub struct ImagesView {
-  docker_state: Entity<DockerState>,
+  _docker_state: Entity<DockerState>,
   image_list: Entity<ImageList>,
   selected_image: Option<ImageInfo>,
   inspect_data: Option<ImageInspectData>,
   active_tab: usize,
-  pending_notifications: Vec<(NotificationType, String)>,
 }
 
 impl ImagesView {
-  pub fn new(window: &mut Window, cx: &mut Context<Self>) -> Self {
+  pub fn new(window: &mut Window, cx: &mut Context<'_, Self>) -> Self {
     let docker_state = docker_state(cx);
 
     // Create image list entity
@@ -79,36 +77,16 @@ impl ImagesView {
     })
     .detach();
 
-    // Subscribe to dispatcher events for notifications
-    let disp = dispatcher(cx);
-    cx.subscribe(&disp, |this, _disp, event: &DispatcherEvent, cx| {
-      match event {
-        DispatcherEvent::TaskCompleted { name: _, message } => {
-          this
-            .pending_notifications
-            .push((NotificationType::Success, message.clone()));
-        }
-        DispatcherEvent::TaskFailed { name: _, error } => {
-          this
-            .pending_notifications
-            .push((NotificationType::Error, error.clone()));
-        }
-      }
-      cx.notify();
-    })
-    .detach();
-
     Self {
-      docker_state,
+      _docker_state: docker_state,
       image_list,
       selected_image: None,
       inspect_data: None,
       active_tab: 0,
-      pending_notifications: Vec::new(),
     }
   }
 
-  fn show_pull_dialog(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+  fn show_pull_dialog(&mut self, window: &mut Window, cx: &mut Context<'_, Self>) {
     let dialog_entity = cx.new(PullImageDialog::new);
 
     window.open_dialog(cx, move |dialog, _window, _cx| {
@@ -141,7 +119,7 @@ impl ImagesView {
     });
   }
 
-  fn on_select_image(&mut self, image: &ImageInfo, cx: &mut Context<Self>) {
+  fn on_select_image(&mut self, image: &ImageInfo, cx: &mut Context<'_, Self>) {
     self.selected_image = Some(image.clone());
     self.inspect_data = None;
     self.active_tab = 0;
@@ -152,20 +130,14 @@ impl ImagesView {
     cx.notify();
   }
 
-  fn on_tab_change(&mut self, tab: usize, cx: &mut Context<Self>) {
+  fn on_tab_change(&mut self, tab: usize, cx: &mut Context<'_, Self>) {
     self.active_tab = tab;
     cx.notify();
   }
 }
 
 impl Render for ImagesView {
-  fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
-    // Push any pending notifications
-    for (notification_type, message) in self.pending_notifications.drain(..) {
-      use gpui::SharedString;
-      window.push_notification((notification_type, SharedString::from(message)), cx);
-    }
-
+  fn render(&mut self, window: &mut Window, cx: &mut Context<'_, Self>) -> impl IntoElement {
     let colors = cx.theme().colors;
     let selected_image = self.selected_image.clone();
     let inspect_data = self.inspect_data.clone();

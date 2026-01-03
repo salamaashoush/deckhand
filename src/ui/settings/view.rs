@@ -60,7 +60,7 @@ pub struct SettingsView {
 }
 
 impl SettingsView {
-  pub fn new(cx: &mut Context<Self>) -> Self {
+  pub fn new(cx: &mut Context<'_, Self>) -> Self {
     let settings_state = settings_state(cx);
 
     Self {
@@ -77,7 +77,7 @@ impl SettingsView {
     }
   }
 
-  fn ensure_initialized(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+  fn ensure_initialized(&mut self, window: &mut Window, cx: &mut Context<'_, Self>) {
     if self.initialized {
       return;
     }
@@ -120,7 +120,7 @@ impl SettingsView {
     self.initialized = true;
   }
 
-  fn check_and_apply_theme(&mut self, cx: &mut Context<Self>) {
+  fn check_and_apply_theme(&mut self, cx: &mut Context<'_, Self>) {
     let Some(theme_select) = &self.theme_select else {
       return;
     };
@@ -142,7 +142,7 @@ impl SettingsView {
     }
   }
 
-  fn reset_to_defaults(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+  fn reset_to_defaults(&mut self, window: &mut Window, cx: &mut Context<'_, Self>) {
     // Get default theme to apply it
     let default_settings = crate::state::AppSettings::default();
     let default_theme = default_settings.theme.clone();
@@ -166,7 +166,7 @@ impl SettingsView {
     cx.notify();
   }
 
-  fn apply_settings(&mut self, cx: &mut Context<Self>) {
+  fn apply_settings(&mut self, cx: &mut Context<'_, Self>) {
     let Some(docker_socket_input) = &self.docker_socket_input else {
       return;
     };
@@ -251,7 +251,7 @@ impl SettingsView {
     cx.notify();
   }
 
-  fn render_section_header(&self, title: &str, cx: &Context<Self>) -> impl IntoElement {
+  fn render_section_header(&self, title: &str, cx: &Context<'_, Self>) -> impl IntoElement {
     let colors = &cx.theme().colors;
     div()
       .w_full()
@@ -269,7 +269,7 @@ impl SettingsView {
     label: &'static str,
     description: &'static str,
     content: impl IntoElement,
-    cx: &Context<Self>,
+    cx: &Context<'_, Self>,
   ) -> impl IntoElement {
     let colors = cx.theme().colors;
     h_flex()
@@ -292,7 +292,7 @@ impl SettingsView {
 }
 
 impl Render for SettingsView {
-  fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+  fn render(&mut self, window: &mut Window, cx: &mut Context<'_, Self>) -> impl IntoElement {
     self.ensure_initialized(window, cx);
 
     // Check if theme changed and apply immediately

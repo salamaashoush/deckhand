@@ -76,7 +76,7 @@ impl ListDelegate for DeploymentListDelegate {
     &mut self,
     ix: IndexPath,
     _window: &mut Window,
-    cx: &mut Context<ListState<Self>>,
+    cx: &mut Context<'_, ListState<Self>>,
   ) -> Option<Self::Item> {
     let deployments = self.filtered_deployments(cx);
     let deployment = deployments.get(ix.row)?;
@@ -224,7 +224,7 @@ impl ListDelegate for DeploymentListDelegate {
     Some(item)
   }
 
-  fn set_selected_index(&mut self, ix: Option<IndexPath>, _window: &mut Window, cx: &mut Context<ListState<Self>>) {
+  fn set_selected_index(&mut self, ix: Option<IndexPath>, _window: &mut Window, cx: &mut Context<'_, ListState<Self>>) {
     self.selected_index = ix;
     cx.notify();
   }
@@ -240,7 +240,7 @@ pub struct DeploymentList {
 }
 
 impl DeploymentList {
-  pub fn new(window: &mut Window, cx: &mut Context<Self>) -> Self {
+  pub fn new(window: &mut Window, cx: &mut Context<'_, Self>) -> Self {
     let docker_state = docker_state(cx);
 
     let delegate = DeploymentListDelegate {
@@ -287,14 +287,14 @@ impl DeploymentList {
     }
   }
 
-  fn ensure_search_input(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+  fn ensure_search_input(&mut self, window: &mut Window, cx: &mut Context<'_, Self>) {
     if self.search_input.is_none() {
       let input_state = cx.new(|cx| InputState::new(window, cx).placeholder("Search deployments..."));
       self.search_input = Some(input_state);
     }
   }
 
-  fn sync_search_query(&mut self, cx: &mut Context<Self>) {
+  fn sync_search_query(&mut self, cx: &mut Context<'_, Self>) {
     if let Some(input) = &self.search_input {
       let current_text = input.read(cx).text().to_string();
       if current_text != self.search_query {
@@ -307,7 +307,7 @@ impl DeploymentList {
     }
   }
 
-  fn toggle_search(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+  fn toggle_search(&mut self, window: &mut Window, cx: &mut Context<'_, Self>) {
     self.search_visible = !self.search_visible;
     if self.search_visible {
       self.ensure_search_input(window, cx);
@@ -322,7 +322,7 @@ impl DeploymentList {
     cx.notify();
   }
 
-  fn render_empty(&self, cx: &mut Context<Self>) -> gpui::Div {
+  fn render_empty(&self, cx: &mut Context<'_, Self>) -> gpui::Div {
     let colors = &cx.theme().colors;
     let state = self.docker_state.read(cx);
 
@@ -363,7 +363,7 @@ impl DeploymentList {
       .child(div().text_sm().text_color(colors.muted_foreground).child(subtitle))
   }
 
-  fn render_no_results(&self, cx: &mut Context<Self>) -> gpui::Div {
+  fn render_no_results(&self, cx: &mut Context<'_, Self>) -> gpui::Div {
     let colors = &cx.theme().colors;
 
     v_flex()
@@ -398,7 +398,7 @@ impl DeploymentList {
       )
   }
 
-  fn render_namespace_selector(&self, cx: &mut Context<Self>) -> impl IntoElement {
+  fn render_namespace_selector(&self, cx: &mut Context<'_, Self>) -> impl IntoElement {
     let state = self.docker_state.read(cx);
     let selected = state.selected_namespace.clone();
     let namespaces = state.namespaces.clone();
@@ -441,7 +441,7 @@ impl DeploymentList {
 impl gpui::EventEmitter<DeploymentListEvent> for DeploymentList {}
 
 impl Render for DeploymentList {
-  fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+  fn render(&mut self, window: &mut Window, cx: &mut Context<'_, Self>) -> impl IntoElement {
     let state = self.docker_state.read(cx);
     let total_count = state.deployments.len();
 

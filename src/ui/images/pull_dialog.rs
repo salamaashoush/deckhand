@@ -73,7 +73,7 @@ pub struct PullImageDialog {
 }
 
 impl PullImageDialog {
-  pub fn new(cx: &mut Context<Self>) -> Self {
+  pub fn new(cx: &mut Context<'_, Self>) -> Self {
     let focus_handle = cx.focus_handle();
 
     Self {
@@ -83,7 +83,7 @@ impl PullImageDialog {
     }
   }
 
-  fn ensure_inputs(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+  fn ensure_inputs(&mut self, window: &mut Window, cx: &mut Context<'_, Self>) {
     if self.image_input.is_none() {
       self.image_input = Some(cx.new(|cx| InputState::new(window, cx).placeholder("e.g., nginx:latest, ubuntu:22.04")));
     }
@@ -118,7 +118,7 @@ impl Focusable for PullImageDialog {
 }
 
 impl Render for PullImageDialog {
-  fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+  fn render(&mut self, window: &mut Window, cx: &mut Context<'_, Self>) -> impl IntoElement {
     self.ensure_inputs(window, cx);
     let colors = cx.theme().colors;
 

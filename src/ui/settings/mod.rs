@@ -62,7 +62,7 @@ pub struct SettingsDialog {
 }
 
 impl SettingsDialog {
-  pub fn new(window: &mut Window, cx: &mut Context<Self>) -> Self {
+  pub fn new(window: &mut Window, cx: &mut Context<'_, Self>) -> Self {
     let focus_handle = cx.focus_handle();
     let settings_state = settings_state(cx);
     let settings = settings_state.read(cx).settings.clone();
@@ -110,7 +110,7 @@ impl SettingsDialog {
     }
   }
 
-  pub fn apply_settings(&mut self, _window: &mut Window, cx: &mut Context<Self>) {
+  pub fn apply_settings(&mut self, _window: &mut Window, cx: &mut Context<'_, Self>) {
     // Get current values from inputs
     let docker_socket = self.docker_socket_input.read(cx).text().to_string();
     let colima_profile = self.colima_profile_input.read(cx).text().to_string();
@@ -178,7 +178,7 @@ impl SettingsDialog {
     cx.notify();
   }
 
-  fn render_section_header(&self, title: &str, cx: &Context<Self>) -> impl IntoElement {
+  fn render_section_header(&self, title: &str, cx: &Context<'_, Self>) -> impl IntoElement {
     let colors = &cx.theme().colors;
     div()
       .w_full()
@@ -196,7 +196,7 @@ impl SettingsDialog {
     label: &'static str,
     description: &'static str,
     content: impl IntoElement,
-    cx: &Context<Self>,
+    cx: &Context<'_, Self>,
   ) -> impl IntoElement {
     let colors = cx.theme().colors;
     h_flex()
@@ -226,7 +226,7 @@ impl Focusable for SettingsDialog {
 }
 
 impl Render for SettingsDialog {
-  fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+  fn render(&mut self, _window: &mut Window, cx: &mut Context<'_, Self>) -> impl IntoElement {
     v_flex()
             .w_full()
             .max_h(px(550.))

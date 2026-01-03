@@ -86,7 +86,7 @@ impl NetworkDetail {
   }
 
   fn render_info_tab(&self, network: &NetworkInfo, cx: &App) -> gpui::Div {
-    let colors = &cx.theme().colors;
+    let _colors = &cx.theme().colors;
 
     // Basic info rows
     let mut basic_info = vec![

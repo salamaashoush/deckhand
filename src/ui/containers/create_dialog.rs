@@ -327,7 +327,7 @@ pub struct CreateContainerDialog {
 }
 
 impl CreateContainerDialog {
-  pub fn new(cx: &mut Context<Self>) -> Self {
+  pub fn new(cx: &mut Context<'_, Self>) -> Self {
     let focus_handle = cx.focus_handle();
 
     Self {
@@ -359,7 +359,7 @@ impl CreateContainerDialog {
     }
   }
 
-  fn ensure_inputs(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+  fn ensure_inputs(&mut self, window: &mut Window, cx: &mut Context<'_, Self>) {
     if self.image_input.is_none() {
       self.image_input = Some(cx.new(|cx| InputState::new(window, cx).placeholder("e.g. nginx:latest")));
     }
@@ -558,7 +558,7 @@ impl CreateContainerDialog {
       .child(div().text_xs().text_color(colors.muted_foreground).child(title))
   }
 
-  fn render_general_tab(&self, colors: &DialogColors, cx: &mut Context<Self>) -> impl IntoElement {
+  fn render_general_tab(&self, colors: &DialogColors, cx: &mut Context<'_, Self>) -> impl IntoElement {
     let remove_after_stop = self.remove_after_stop;
     let privileged = self.privileged;
     let read_only = self.read_only;
@@ -666,7 +666,7 @@ impl CreateContainerDialog {
             ))
   }
 
-  fn render_ports_tab(&self, colors: &DialogColors, cx: &mut Context<Self>) -> impl IntoElement {
+  fn render_ports_tab(&self, colors: &DialogColors, cx: &mut Context<'_, Self>) -> impl IntoElement {
     let port_host_input = self.port_host_input.clone().unwrap();
     let port_container_input = self.port_container_input.clone().unwrap();
     let port_protocol_tcp = self.port_protocol_tcp;
@@ -789,7 +789,7 @@ impl CreateContainerDialog {
             }))
   }
 
-  fn render_volumes_tab(&self, colors: &DialogColors, cx: &mut Context<Self>) -> impl IntoElement {
+  fn render_volumes_tab(&self, colors: &DialogColors, cx: &mut Context<'_, Self>) -> impl IntoElement {
     let volume_host_input = self.volume_host_input.clone().unwrap();
     let volume_container_input = self.volume_container_input.clone().unwrap();
     let volume_readonly = self.volume_readonly;
@@ -901,7 +901,7 @@ impl CreateContainerDialog {
             }))
   }
 
-  fn render_env_tab(&self, colors: &DialogColors, cx: &mut Context<Self>) -> impl IntoElement {
+  fn render_env_tab(&self, colors: &DialogColors, cx: &mut Context<'_, Self>) -> impl IntoElement {
     let env_key_input = self.env_key_input.clone().unwrap();
     let env_value_input = self.env_value_input.clone().unwrap();
     let sidebar_color = colors.sidebar;
@@ -999,7 +999,7 @@ impl CreateContainerDialog {
             }))
   }
 
-  fn render_network_tab(&self, colors: &DialogColors, _cx: &mut Context<Self>) -> impl IntoElement {
+  fn render_network_tab(&self, colors: &DialogColors, _cx: &mut Context<'_, Self>) -> impl IntoElement {
     let network_input = self.network_input.clone().unwrap();
 
     v_flex()
@@ -1030,7 +1030,7 @@ impl Focusable for CreateContainerDialog {
 }
 
 impl Render for CreateContainerDialog {
-  fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+  fn render(&mut self, window: &mut Window, cx: &mut Context<'_, Self>) -> impl IntoElement {
     self.ensure_inputs(window, cx);
 
     let theme_colors = cx.theme().colors;

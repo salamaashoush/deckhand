@@ -3,7 +3,7 @@ use gpui_component::{
   Icon, IconName, Selectable, Sizable,
   button::{Button, ButtonVariants},
   h_flex,
-  label::Label,
+  input::{Input, InputState},
   scroll::ScrollableElement,
   tab::{Tab, TabBar},
   theme::ActiveTheme,
@@ -20,10 +20,12 @@ pub struct ServiceDetail {
   service: Option<ServiceInfo>,
   active_tab: usize,
   yaml_content: String,
+  yaml_editor: Option<Entity<InputState>>,
+  last_synced_yaml: String,
 }
 
 impl ServiceDetail {
-  pub fn new(cx: &mut Context<Self>) -> Self {
+  pub fn new(cx: &mut Context<'_, Self>) -> Self {
     let docker_state = docker_state(cx);
 
     // Subscribe to state changes
@@ -76,13 +78,17 @@ impl ServiceDetail {
       service: None,
       active_tab: 0,
       yaml_content: String::new(),
+      yaml_editor: None,
+      last_synced_yaml: String::new(),
     }
   }
 
-  pub fn set_service(&mut self, service: ServiceInfo, cx: &mut Context<Self>) {
+  pub fn set_service(&mut self, service: ServiceInfo, cx: &mut Context<'_, Self>) {
     self.service = Some(service.clone());
     self.active_tab = 0;
     self.yaml_content.clear();
+    self.yaml_editor = None;
+    self.last_synced_yaml.clear();
 
     // Load YAML
     services::get_service_yaml(service.name, service.namespace, cx);
@@ -90,14 +96,14 @@ impl ServiceDetail {
     cx.notify();
   }
 
-  pub fn clear(&mut self, cx: &mut Context<Self>) {
+  pub fn clear(&mut self, cx: &mut Context<'_, Self>) {
     self.service = None;
     self.active_tab = 0;
     self.yaml_content.clear();
     cx.notify();
   }
 
-  fn render_info_tab(&self, service: &ServiceInfo, cx: &mut Context<Self>) -> gpui::Div {
+  fn render_info_tab(&self, service: &ServiceInfo, cx: &mut Context<'_, Self>) -> gpui::Div {
     let colors = &cx.theme().colors;
 
     let info_row = |label: &str, value: String| {
@@ -207,7 +213,7 @@ impl ServiceDetail {
     div().size_full().p(px(16.)).child(content)
   }
 
-  fn render_ports_tab(&self, service: &ServiceInfo, cx: &mut Context<Self>) -> gpui::Div {
+  fn render_ports_tab(&self, service: &ServiceInfo, cx: &mut Context<'_, Self>) -> gpui::Div {
     let colors = &cx.theme().colors;
 
     if service.ports.is_empty() {
@@ -326,7 +332,7 @@ impl ServiceDetail {
       .child(v_flex().w_full().child(header).children(rows))
   }
 
-  fn render_endpoints_tab(&self, service: &ServiceInfo, cx: &mut Context<Self>) -> gpui::Div {
+  fn render_endpoints_tab(&self, service: &ServiceInfo, cx: &mut Context<'_, Self>) -> gpui::Div {
     let colors = &cx.theme().colors;
 
     if service.selector.is_empty() {
@@ -531,38 +537,42 @@ impl ServiceDetail {
     )
   }
 
-  fn render_yaml_tab(&self, _service: &ServiceInfo, cx: &mut Context<Self>) -> gpui::Div {
+  fn render_yaml_tab(&self, _service: &ServiceInfo, cx: &mut Context<'_, Self>) -> gpui::Div {
     let colors = &cx.theme().colors;
 
     if self.yaml_content.is_empty() {
-      return div().size_full().flex().items_center().justify_center().child(
-        div()
-          .text_sm()
-          .text_color(colors.muted_foreground)
-          .child("Loading YAML..."),
-      );
-    }
-
-    div().size_full().p(px(16.)).child(
-      div()
-        .w_full()
-        .h_full()
-        .p(px(12.))
-        .rounded(px(8.))
-        .bg(colors.sidebar)
-        .overflow_y_scrollbar()
+      return v_flex()
+        .size_full()
+        .p(px(16.))
         .child(
           div()
-            .text_xs()
-            .font_family("monospace")
-            .text_color(colors.foreground)
-            .whitespace_nowrap()
-            .child(self.yaml_content.clone()),
-        ),
+            .text_sm()
+            .text_color(colors.muted_foreground)
+            .child("Loading YAML..."),
+        );
+    }
+
+    if let Some(ref editor) = self.yaml_editor {
+      return div()
+        .size_full()
+        .child(Input::new(editor).size_full().appearance(false).disabled(true));
+    }
+
+    // Fallback to plain text
+    div().size_full().child(
+      div()
+        .size_full()
+        .overflow_y_scrollbar()
+        .bg(colors.sidebar)
+        .p(px(12.))
+        .font_family("monospace")
+        .text_xs()
+        .text_color(colors.foreground)
+        .child(self.yaml_content.clone()),
     )
   }
 
-  fn render_empty(&self, cx: &mut Context<Self>) -> gpui::Div {
+  fn render_empty(&self, cx: &mut Context<'_, Self>) -> gpui::Div {
     let colors = &cx.theme().colors;
 
     div().size_full().flex().items_center().justify_center().child(
@@ -597,7 +607,30 @@ impl ServiceDetail {
 }
 
 impl Render for ServiceDetail {
-  fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+  fn render(&mut self, window: &mut Window, cx: &mut Context<'_, Self>) -> impl IntoElement {
+    // Create yaml editor if needed
+    if self.yaml_editor.is_none() && self.service.is_some() {
+      self.yaml_editor = Some(cx.new(|cx| {
+        InputState::new(window, cx)
+          .multi_line(true)
+          .code_editor("yaml")
+          .line_number(true)
+          .searchable(true)
+          .soft_wrap(false)
+      }));
+    }
+
+    // Sync yaml editor content
+    if let Some(ref editor) = self.yaml_editor {
+      if !self.yaml_content.is_empty() && self.last_synced_yaml != self.yaml_content {
+        let yaml_clone = self.yaml_content.clone();
+        editor.update(cx, |state, cx| {
+          state.replace(&yaml_clone, window, cx);
+        });
+        self.last_synced_yaml = self.yaml_content.clone();
+      }
+    }
+
     let colors = cx.theme().colors;
 
     let Some(service) = self.service.clone() else {
@@ -608,6 +641,7 @@ impl Render for ServiceDetail {
 
     // Tab bar
     let tab_bar = TabBar::new("service-tabs")
+      .flex_1()
       .py(px(0.))
       .child(
         Tab::new()
@@ -665,26 +699,10 @@ impl Render for ServiceDetail {
       .child(
         h_flex()
           .w_full()
-          .h(px(52.))
           .px(px(16.))
+          .py(px(8.))
+          .gap(px(12.))
           .items_center()
-          .justify_between()
-          .border_b_1()
-          .border_color(colors.border)
-          .flex_shrink_0()
-          .child(
-            v_flex().child(Label::new(service.name.clone())).child(
-              div()
-                .text_xs()
-                .text_color(colors.muted_foreground)
-                .child(format!("{} - {}", service.namespace, service.service_type)),
-            ),
-          ),
-      )
-      .child(
-        h_flex()
-          .w_full()
-          .px(px(16.))
           .border_b_1()
           .border_color(colors.border)
           .flex_shrink_0()

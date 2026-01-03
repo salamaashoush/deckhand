@@ -2,8 +2,9 @@ use anyhow::Result;
 use bollard::exec::{CreateExecOptions, StartExecResults};
 use bollard::models::{ContainerCreateBody, HostConfig};
 use bollard::query_parameters::{
-  CreateContainerOptions, KillContainerOptions, ListContainersOptions, LogsOptions, RemoveContainerOptions,
-  RestartContainerOptions, StartContainerOptions, StopContainerOptions,
+  CommitContainerOptions, CreateContainerOptions, DownloadFromContainerOptions, KillContainerOptions,
+  ListContainersOptions, LogsOptions, RemoveContainerOptions, RenameContainerOptions, RestartContainerOptions,
+  StartContainerOptions, StopContainerOptions, TopOptions, UploadToContainerOptions,
 };
 use chrono::{DateTime, Utc};
 use futures::stream::StreamExt;
@@ -253,7 +254,7 @@ impl DockerClient {
   pub async fn rename_container(&self, id: &str, new_name: &str) -> Result<()> {
     let docker = self.client()?;
     docker
-      .rename_container(id, bollard::container::RenameContainerOptions { name: new_name })
+      .rename_container(id, RenameContainerOptions { name: new_name.to_string() })
       .await?;
     Ok(())
   }
@@ -269,16 +270,16 @@ impl DockerClient {
     let docker = self.client()?;
     let result = docker
       .commit_container(
-        bollard::image::CommitContainerOptions {
-          container: id,
-          repo,
-          tag,
-          comment: comment.unwrap_or(""),
-          author: author.unwrap_or(""),
+        CommitContainerOptions {
+          container: Some(id.to_string()),
+          repo: Some(repo.to_string()),
+          tag: Some(tag.to_string()),
+          comment: comment.map(|s| s.to_string()),
+          author: author.map(|s| s.to_string()),
           pause: true,
           changes: None,
         },
-        bollard::container::Config::<String>::default(),
+        bollard::models::ContainerConfig::default(),
       )
       .await?;
     Ok(result.id)
@@ -287,7 +288,7 @@ impl DockerClient {
   pub async fn get_container_top(&self, id: &str) -> Result<Vec<Vec<String>>> {
     let docker = self.client()?;
     let result = docker
-      .top_processes(id, Some(bollard::container::TopOptions { ps_args: "aux" }))
+      .top_processes(id, Some(TopOptions { ps_args: "aux".to_string() }))
       .await?;
     Ok(result.processes.unwrap_or_default())
   }
@@ -312,7 +313,7 @@ impl DockerClient {
     use futures::TryStreamExt;
 
     let docker = self.client()?;
-    let stream = docker.download_from_container(id, Some(bollard::container::DownloadFromContainerOptions { path }));
+    let stream = docker.download_from_container(id, Some(DownloadFromContainerOptions { path: path.to_string() }));
 
     let mut data = Vec::new();
     futures::pin_mut!(stream);
@@ -328,9 +329,10 @@ impl DockerClient {
     docker
       .upload_to_container(
         id,
-        Some(bollard::container::UploadToContainerOptions {
-          path,
-          no_overwrite_dir_non_dir: "false",
+        Some(UploadToContainerOptions {
+          path: path.to_string(),
+          no_overwrite_dir_non_dir: None,
+          copy_uidgid: None,
         }),
         bollard::body_full(Bytes::from(data)),
       )

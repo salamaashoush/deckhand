@@ -1,5 +1,5 @@
 use gpui::{Context, Entity, Render, Styled, Timer, Window, div, prelude::*, px};
-use gpui_component::theme::ActiveTheme;
+use gpui_component::{input::InputState, theme::ActiveTheme};
 use std::time::Duration;
 
 use crate::kubernetes::{PodInfo, PodPhase};
@@ -12,26 +12,34 @@ use super::list::{PodList, PodListEvent};
 
 /// Self-contained Pods view - handles list, detail, and all state
 pub struct PodsView {
-  docker_state: Entity<DockerState>,
+  _docker_state: Entity<DockerState>,
   pod_list: Entity<PodList>,
   selected_pod: Option<PodInfo>,
   active_tab: usize,
   pod_tab_state: PodTabState,
   terminal_view: Option<Entity<TerminalView>>,
+  // Editors for logs/describe/yaml
+  logs_editor: Option<Entity<InputState>>,
+  describe_editor: Option<Entity<InputState>>,
+  yaml_editor: Option<Entity<InputState>>,
+  // Track synced content
+  last_synced_logs: String,
+  last_synced_describe: String,
+  last_synced_yaml: String,
 }
 
 impl PodsView {
-  pub fn new(window: &mut Window, cx: &mut Context<Self>) -> Self {
+  pub fn new(window: &mut Window, cx: &mut Context<'_, Self>) -> Self {
     let docker_state = docker_state(cx);
 
     // Create pod list entity
     let pod_list = cx.new(|cx| PodList::new(window, cx));
 
     // Subscribe to pod list events
-    cx.subscribe_in(&pod_list, window, |this, _list, event: &PodListEvent, _window, cx| {
+    cx.subscribe_in(&pod_list, window, |this, _list, event: &PodListEvent, window, cx| {
       match event {
         PodListEvent::Selected(pod) => {
-          this.on_select_pod(pod, cx);
+          this.on_select_pod(pod, window, cx);
         }
         PodListEvent::NamespaceChanged(_ns) => {
           // Namespace change is handled by the list
@@ -122,7 +130,7 @@ impl PodsView {
                 list.select_pod(pod_name, namespace, cx);
               });
               // Select in the view
-              this.on_select_pod(&pod, cx);
+              this.on_select_pod(&pod, window, cx);
               this.on_tab_change(*tab, window, cx);
             }
           }
@@ -149,19 +157,58 @@ impl PodsView {
     services::refresh_namespaces(cx);
 
     Self {
-      docker_state,
+      _docker_state: docker_state,
       pod_list,
       selected_pod: None,
       active_tab: 0,
       pod_tab_state: PodTabState::new(),
       terminal_view: None,
+      logs_editor: None,
+      describe_editor: None,
+      yaml_editor: None,
+      last_synced_logs: String::new(),
+      last_synced_describe: String::new(),
+      last_synced_yaml: String::new(),
     }
   }
 
-  fn on_select_pod(&mut self, pod: &PodInfo, cx: &mut Context<Self>) {
+  fn on_select_pod(&mut self, pod: &PodInfo, window: &mut Window, cx: &mut Context<'_, Self>) {
     self.selected_pod = Some(pod.clone());
     self.active_tab = 0;
     self.terminal_view = None;
+
+    // Clear synced tracking for new pod
+    self.last_synced_logs.clear();
+    self.last_synced_describe.clear();
+    self.last_synced_yaml.clear();
+
+    // Create editors for logs/describe/yaml
+    self.logs_editor = Some(cx.new(|cx| {
+      InputState::new(window, cx)
+        .multi_line(true)
+        .code_editor("log")
+        .line_number(true)
+        .searchable(true)
+        .soft_wrap(false)
+    }));
+
+    self.describe_editor = Some(cx.new(|cx| {
+      InputState::new(window, cx)
+        .multi_line(true)
+        .code_editor("yaml")
+        .line_number(true)
+        .searchable(true)
+        .soft_wrap(false)
+    }));
+
+    self.yaml_editor = Some(cx.new(|cx| {
+      InputState::new(window, cx)
+        .multi_line(true)
+        .code_editor("yaml")
+        .line_number(true)
+        .searchable(true)
+        .soft_wrap(false)
+    }));
 
     // Reset state
     self.pod_tab_state = PodTabState::new();
@@ -173,7 +220,7 @@ impl PodsView {
     cx.notify();
   }
 
-  fn on_tab_change(&mut self, tab: usize, window: &mut Window, cx: &mut Context<Self>) {
+  fn on_tab_change(&mut self, tab: usize, window: &mut Window, cx: &mut Context<'_, Self>) {
     self.active_tab = tab;
 
     if let Some(ref pod) = self.selected_pod.clone() {
@@ -212,7 +259,7 @@ impl PodsView {
     cx.notify();
   }
 
-  fn load_pod_logs(&mut self, pod: &PodInfo, cx: &mut Context<Self>) {
+  fn load_pod_logs(&mut self, pod: &PodInfo, cx: &mut Context<'_, Self>) {
     self.pod_tab_state.logs_loading = true;
     self.pod_tab_state.logs.clear();
     cx.notify();
@@ -222,7 +269,7 @@ impl PodsView {
     services::get_pod_logs(pod.name.clone(), pod.namespace.clone(), container, 500, cx);
   }
 
-  fn on_container_select(&mut self, container: &str, window: &mut Window, cx: &mut Context<Self>) {
+  fn on_container_select(&mut self, container: &str, window: &mut Window, cx: &mut Context<'_, Self>) {
     self.pod_tab_state.selected_container = Some(container.to_string());
 
     // Reset terminal if we're on terminal tab
@@ -255,7 +302,7 @@ impl PodsView {
     cx.notify();
   }
 
-  fn on_refresh_logs(&mut self, cx: &mut Context<Self>) {
+  fn on_refresh_logs(&mut self, cx: &mut Context<'_, Self>) {
     if let Some(ref pod) = self.selected_pod.clone() {
       self.load_pod_logs(pod, cx);
     }
@@ -263,12 +310,49 @@ impl PodsView {
 }
 
 impl Render for PodsView {
-  fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+  fn render(&mut self, window: &mut Window, cx: &mut Context<'_, Self>) -> impl IntoElement {
+    // Sync editor content with loaded data
+    if let Some(ref editor) = self.logs_editor {
+      let logs = &self.pod_tab_state.logs;
+      if !logs.is_empty() && !self.pod_tab_state.logs_loading && self.last_synced_logs != *logs {
+        let logs_clone = logs.clone();
+        editor.update(cx, |state, cx| {
+          state.replace(&logs_clone, window, cx);
+        });
+        self.last_synced_logs = logs.clone();
+      }
+    }
+
+    if let Some(ref editor) = self.describe_editor {
+      let describe = &self.pod_tab_state.describe;
+      if !describe.is_empty() && !self.pod_tab_state.describe_loading && self.last_synced_describe != *describe {
+        let describe_clone = describe.clone();
+        editor.update(cx, |state, cx| {
+          state.replace(&describe_clone, window, cx);
+        });
+        self.last_synced_describe = describe.clone();
+      }
+    }
+
+    if let Some(ref editor) = self.yaml_editor {
+      let yaml = &self.pod_tab_state.yaml;
+      if !yaml.is_empty() && !self.pod_tab_state.yaml_loading && self.last_synced_yaml != *yaml {
+        let yaml_clone = yaml.clone();
+        editor.update(cx, |state, cx| {
+          state.replace(&yaml_clone, window, cx);
+        });
+        self.last_synced_yaml = yaml.clone();
+      }
+    }
+
     let colors = cx.theme().colors;
     let selected_pod = self.selected_pod.clone();
     let active_tab = self.active_tab;
     let pod_tab_state = self.pod_tab_state.clone();
     let terminal_view = self.terminal_view.clone();
+    let logs_editor = self.logs_editor.clone();
+    let describe_editor = self.describe_editor.clone();
+    let yaml_editor = self.yaml_editor.clone();
 
     // Build detail panel
     let detail = PodDetail::new()
@@ -276,6 +360,9 @@ impl Render for PodsView {
       .active_tab(active_tab)
       .pod_state(pod_tab_state)
       .terminal_view(terminal_view)
+      .logs_editor(logs_editor)
+      .describe_editor(describe_editor)
+      .yaml_editor(yaml_editor)
       .on_tab_change(cx.listener(|this, tab: &usize, window, cx| {
         this.on_tab_change(*tab, window, cx);
       }))

@@ -20,7 +20,7 @@ pub struct ActivityMonitorView {
 }
 
 impl ActivityMonitorView {
-  pub fn new(_window: &mut Window, cx: &mut Context<Self>) -> Self {
+  pub fn new(_window: &mut Window, cx: &mut Context<'_, Self>) -> Self {
     // Get refresh interval from settings
     let refresh_interval = settings_state(cx).read(cx).settings.stats_refresh_interval;
 
@@ -53,7 +53,7 @@ impl ActivityMonitorView {
     view
   }
 
-  fn refresh_stats(&mut self, cx: &mut Context<Self>) {
+  fn refresh_stats(&mut self, cx: &mut Context<'_, Self>) {
     let tokio_handle = services::Tokio::runtime_handle();
     let client = services::docker_client();
 
@@ -104,7 +104,7 @@ impl ActivityMonitorView {
     .detach();
   }
 
-  fn render_header(&self, cx: &Context<Self>) -> impl IntoElement {
+  fn render_header(&self, cx: &Context<'_, Self>) -> impl IntoElement {
     let colors = &cx.theme().colors;
 
     h_flex()
@@ -166,7 +166,7 @@ impl ActivityMonitorView {
       )
   }
 
-  fn render_container_group(&self, cx: &Context<Self>) -> impl IntoElement {
+  fn render_container_group(&self, cx: &Context<'_, Self>) -> impl IntoElement {
     let colors = &cx.theme().colors;
     let expanded = self.expanded;
 
@@ -270,7 +270,7 @@ impl ActivityMonitorView {
             })
   }
 
-  fn render_container_row(&self, stats: &ContainerStats, cx: &Context<Self>) -> impl IntoElement {
+  fn render_container_row(&self, stats: &ContainerStats, cx: &Context<'_, Self>) -> impl IntoElement {
     let colors = &cx.theme().colors;
     let name = if stats.name.is_empty() {
       stats.id.chars().take(12).collect::<String>()
@@ -334,7 +334,7 @@ impl ActivityMonitorView {
             )
   }
 
-  fn render_summary_section(&self, cx: &Context<Self>) -> impl IntoElement {
+  fn render_summary_section(&self, cx: &Context<'_, Self>) -> impl IntoElement {
     let colors = &cx.theme().colors;
 
     h_flex()
@@ -391,7 +391,7 @@ impl ActivityMonitorView {
     value: String,
     history: &[f64],
     color: Hsla,
-    cx: &Context<Self>,
+    cx: &Context<'_, Self>,
   ) -> impl IntoElement {
     let colors = &cx.theme().colors;
 
@@ -439,7 +439,7 @@ impl ActivityMonitorView {
       }))
   }
 
-  fn render_empty(&self, cx: &Context<Self>) -> impl IntoElement {
+  fn render_empty(&self, cx: &Context<'_, Self>) -> impl IntoElement {
     let colors = &cx.theme().colors;
 
     div().flex_1().flex().items_center().justify_center().child(
@@ -473,7 +473,7 @@ fn format_bytes(bytes: u64) -> String {
 }
 
 impl Render for ActivityMonitorView {
-  fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+  fn render(&mut self, _window: &mut Window, cx: &mut Context<'_, Self>) -> impl IntoElement {
     let colors = &cx.theme().colors;
     let has_containers = !self.stats.container_stats.is_empty();
 

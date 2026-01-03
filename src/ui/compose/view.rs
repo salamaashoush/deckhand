@@ -23,11 +23,11 @@ pub struct ComposeView {
 }
 
 impl ComposeView {
-  pub fn new(_window: &mut Window, cx: &mut Context<Self>) -> Self {
+  pub fn new(_window: &mut Window, cx: &mut Context<'_, Self>) -> Self {
     let docker_state = docker_state(cx);
 
     // Subscribe to state changes
-    cx.subscribe(&docker_state, |this, _state, event: &StateChanged, cx| {
+    cx.subscribe(&docker_state, |_this, _state, event: &StateChanged, cx| {
       if let StateChanged::ContainersUpdated = event {
         cx.notify();
       }
@@ -40,7 +40,7 @@ impl ComposeView {
     }
   }
 
-  fn toggle_project(&mut self, project_name: &str, cx: &mut Context<Self>) {
+  fn toggle_project(&mut self, project_name: &str, cx: &mut Context<'_, Self>) {
     if self.expanded_projects.contains(project_name) {
       self.expanded_projects.remove(project_name);
     } else {
@@ -49,7 +49,7 @@ impl ComposeView {
     cx.notify();
   }
 
-  fn render_empty(&self, cx: &Context<Self>) -> impl IntoElement {
+  fn render_empty(&self, cx: &Context<'_, Self>) -> impl IntoElement {
     let colors = &cx.theme().colors;
 
     div().size_full().flex().items_center().justify_center().child(
@@ -75,7 +75,7 @@ impl ComposeView {
     )
   }
 
-  fn render_project(&self, project: &ComposeProject, is_expanded: bool, cx: &mut Context<Self>) -> impl IntoElement {
+  fn render_project(&self, project: &ComposeProject, is_expanded: bool, cx: &mut Context<'_, Self>) -> impl IntoElement {
     let colors = cx.theme().colors;
     let project_name = project.name.clone();
     let project_name_for_toggle = project_name.clone();
@@ -193,7 +193,7 @@ impl ComposeView {
             )
   }
 
-  fn render_service(&self, service: &ComposeService, cx: &mut Context<Self>) -> impl IntoElement {
+  fn render_service(&self, service: &ComposeService, cx: &mut Context<'_, Self>) -> impl IntoElement {
     let colors = cx.theme().colors;
     let container_id = service.container_id.clone();
 
@@ -258,7 +258,7 @@ impl ComposeView {
 }
 
 impl Render for ComposeView {
-  fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+  fn render(&mut self, _window: &mut Window, cx: &mut Context<'_, Self>) -> impl IntoElement {
     let colors = cx.theme().colors;
 
     // Get containers and extract compose projects

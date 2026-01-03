@@ -3,6 +3,7 @@ use gpui_component::{
   Icon, IconName, Selectable, Sizable,
   button::{Button, ButtonVariants},
   h_flex,
+  input::{Input, InputState},
   scroll::ScrollableElement,
   tab::{Tab, TabBar},
   theme::ActiveTheme,
@@ -45,6 +46,8 @@ pub struct ContainerDetail {
   active_tab: usize,
   container_state: Option<ContainerTabState>,
   terminal_view: Option<Entity<TerminalView>>,
+  logs_editor: Option<Entity<InputState>>,
+  inspect_editor: Option<Entity<InputState>>,
   on_start: Option<ContainerActionCallback>,
   on_stop: Option<ContainerActionCallback>,
   on_restart: Option<ContainerActionCallback>,
@@ -61,6 +64,8 @@ impl ContainerDetail {
       active_tab: 0,
       container_state: None,
       terminal_view: None,
+      logs_editor: None,
+      inspect_editor: None,
       on_start: None,
       on_stop: None,
       on_restart: None,
@@ -88,6 +93,16 @@ impl ContainerDetail {
 
   pub fn terminal_view(mut self, view: Option<Entity<TerminalView>>) -> Self {
     self.terminal_view = view;
+    self
+  }
+
+  pub fn logs_editor(mut self, editor: Option<Entity<InputState>>) -> Self {
+    self.logs_editor = editor;
+    self
+  }
+
+  pub fn inspect_editor(mut self, editor: Option<Entity<InputState>>) -> Self {
+    self.inspect_editor = editor;
     self
   }
 
@@ -238,55 +253,40 @@ impl ContainerDetail {
     let colors = &cx.theme().colors;
     let state = self.container_state.as_ref();
     let is_loading = state.map(|s| s.logs_loading).unwrap_or(false);
+
+    if is_loading {
+      return v_flex()
+        .size_full()
+        .p(px(16.))
+        .child(
+          div()
+            .text_sm()
+            .text_color(colors.muted_foreground)
+            .child("Loading logs..."),
+        );
+    }
+
+    if let Some(ref editor) = self.logs_editor {
+      return div()
+        .size_full()
+        .child(Input::new(editor).size_full().appearance(false).disabled(true));
+    }
+
+    // Fallback to plain text
     let logs_content = state
       .map(|s| s.logs.clone())
       .unwrap_or_else(|| "No logs available".to_string());
-
-    let on_refresh = self.on_refresh_logs.clone();
-
-    v_flex()
-      .w_full()
-      .h_full()
-      .p(px(16.))
-      .gap(px(12.))
-      .child(
-        h_flex()
-          .w_full()
-          .justify_between()
-          .items_center()
-          .child(
-            div()
-              .text_sm()
-              .font_weight(gpui::FontWeight::MEDIUM)
-              .text_color(colors.foreground)
-              .child("Container Logs"),
-          )
-          .child(
-            Button::new("refresh-logs")
-              .icon(IconName::Redo)
-              .ghost()
-              .small()
-              .on_click(move |_ev, window, cx| {
-                if let Some(ref cb) = on_refresh {
-                  cb(&(), window, cx);
-                }
-              }),
-          ),
-      )
-      .child(
-        div()
-          .flex_1()
-          .w_full()
-          .bg(colors.sidebar)
-          .rounded(px(8.))
-          .p(px(12.))
-          .overflow_y_scrollbar()
-          .font_family("monospace")
-          .text_xs()
-          .text_color(colors.foreground)
-          .when(is_loading, |el| el.child("Loading logs..."))
-          .when(!is_loading, |el| el.child(logs_content)),
-      )
+    div().size_full().child(
+      div()
+        .size_full()
+        .overflow_y_scrollbar()
+        .bg(colors.sidebar)
+        .p(px(12.))
+        .font_family("monospace")
+        .text_xs()
+        .text_color(colors.foreground)
+        .child(logs_content),
+    )
   }
 
   fn render_terminal_tab(&self, cx: &App) -> gpui::Div {
@@ -322,34 +322,38 @@ impl ContainerDetail {
     let colors = &cx.theme().colors;
     let state = self.container_state.as_ref();
     let is_loading = state.map(|s| s.inspect_loading).unwrap_or(false);
-    let inspect_content = state.map(|s| s.inspect.clone()).unwrap_or_else(|| "{}".to_string());
 
-    v_flex()
-      .w_full()
-      .h_full()
-      .p(px(16.))
-      .gap(px(12.))
-      .child(
-        div()
-          .text_sm()
-          .font_weight(gpui::FontWeight::MEDIUM)
-          .text_color(colors.foreground)
-          .child("Container Inspect"),
-      )
-      .child(
-        div()
-          .flex_1()
-          .w_full()
-          .bg(colors.sidebar)
-          .rounded(px(8.))
-          .p(px(12.))
-          .overflow_y_scrollbar()
-          .font_family("monospace")
-          .text_xs()
-          .text_color(colors.foreground)
-          .when(is_loading, |el| el.child("Loading..."))
-          .when(!is_loading, |el| el.child(inspect_content)),
-      )
+    if is_loading {
+      return v_flex()
+        .size_full()
+        .p(px(16.))
+        .child(
+          div()
+            .text_sm()
+            .text_color(colors.muted_foreground)
+            .child("Loading..."),
+        );
+    }
+
+    if let Some(ref editor) = self.inspect_editor {
+      return div()
+        .size_full()
+        .child(Input::new(editor).size_full().appearance(false).disabled(true));
+    }
+
+    // Fallback to plain text
+    let inspect_content = state.map(|s| s.inspect.clone()).unwrap_or_else(|| "{}".to_string());
+    div().size_full().child(
+      div()
+        .size_full()
+        .overflow_y_scrollbar()
+        .bg(colors.sidebar)
+        .p(px(12.))
+        .font_family("monospace")
+        .text_xs()
+        .text_color(colors.foreground)
+        .child(inspect_content),
+    )
   }
 
   fn render_files_tab(&self, is_running: bool, cx: &App) -> gpui::Div {
@@ -560,6 +564,7 @@ impl ContainerDetail {
       .py(px(8.))
       .gap(px(12.))
       .items_center()
+      .flex_shrink_0()
       .border_b_1()
       .border_color(colors.border)
       .child(
@@ -651,7 +656,7 @@ impl ContainerDetail {
     // Terminal tab needs full height without scroll
     let is_terminal_tab = self.active_tab == 2;
 
-    let mut result = div().size_full().bg(colors.sidebar).flex().flex_col().child(toolbar);
+    let mut result = div().size_full().overflow_hidden().bg(colors.sidebar).flex().flex_col().child(toolbar);
 
     if is_terminal_tab {
       result = result.child(div().flex_1().min_h_0().w_full().child(content));
@@ -660,6 +665,9 @@ impl ContainerDetail {
         div()
           .id("container-detail-scroll")
           .flex_1()
+          .min_h_0()
+          .w_full()
+          .overflow_hidden()
           .overflow_y_scrollbar()
           .child(content)
           .child(div().h(px(100.))),

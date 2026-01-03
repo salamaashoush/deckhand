@@ -2,13 +2,13 @@ use gpui::{Context, Entity, Render, Styled, Timer, Window, div, prelude::*, px};
 use gpui_component::{
   WindowExt,
   button::{Button, ButtonVariants},
-  notification::NotificationType,
+  input::InputState,
   theme::ActiveTheme,
 };
 use std::time::Duration;
 
 use crate::docker::ContainerInfo;
-use crate::services::{self, DispatcherEvent, dispatcher};
+use crate::services;
 use crate::state::{DockerState, StateChanged, docker_state, settings_state};
 use crate::terminal::{TerminalSessionType, TerminalView};
 
@@ -18,17 +18,21 @@ use super::list::{ContainerList, ContainerListEvent};
 
 /// Self-contained Containers view - handles list, detail, and all state
 pub struct ContainersView {
-  docker_state: Entity<DockerState>,
+  _docker_state: Entity<DockerState>,
   container_list: Entity<ContainerList>,
   selected_container: Option<ContainerInfo>,
   active_tab: usize,
   terminal_view: Option<Entity<TerminalView>>,
+  logs_editor: Option<Entity<InputState>>,
+  inspect_editor: Option<Entity<InputState>>,
   container_tab_state: ContainerTabState,
-  pending_notifications: Vec<(NotificationType, String)>,
+  // Track what we've synced to editors to prevent infinite loops
+  last_synced_logs: String,
+  last_synced_inspect: String,
 }
 
 impl ContainersView {
-  pub fn new(window: &mut Window, cx: &mut Context<Self>) -> Self {
+  pub fn new(window: &mut Window, cx: &mut Context<'_, Self>) -> Self {
     let docker_state = docker_state(cx);
 
     // Create container list entity
@@ -40,7 +44,7 @@ impl ContainersView {
       window,
       |this, _list, event: &ContainerListEvent, window, cx| match event {
         ContainerListEvent::Selected(container) => {
-          this.on_select_container(container, cx);
+          this.on_select_container(container, window, cx);
         }
         ContainerListEvent::NewContainer => {
           this.show_create_dialog(window, cx);
@@ -79,33 +83,32 @@ impl ContainersView {
               state.containers.iter().find(|c| c.id == *container_id).cloned()
             };
             if let Some(container) = container {
-              this.on_select_container(&container, cx);
+              this.on_select_container(&container, window, cx);
               this.on_tab_change(*tab, window, cx);
             }
+          }
+          StateChanged::RenameContainerRequest {
+            container_id,
+            current_name,
+          } => {
+            this.show_rename_dialog(container_id.clone(), current_name.clone(), window, cx);
+          }
+          StateChanged::CommitContainerRequest {
+            container_id,
+            container_name,
+          } => {
+            this.show_commit_dialog(container_id.clone(), container_name.clone(), window, cx);
+          }
+          StateChanged::ExportContainerRequest {
+            container_id,
+            container_name,
+          } => {
+            this.show_export_dialog(container_id.clone(), container_name.clone(), window, cx);
           }
           _ => {}
         }
       },
     )
-    .detach();
-
-    // Subscribe to dispatcher events for notifications
-    let disp = dispatcher(cx);
-    cx.subscribe(&disp, |this, _disp, event: &DispatcherEvent, cx| {
-      match event {
-        DispatcherEvent::TaskCompleted { name: _, message } => {
-          this
-            .pending_notifications
-            .push((NotificationType::Success, message.clone()));
-        }
-        DispatcherEvent::TaskFailed { name: _, error } => {
-          this
-            .pending_notifications
-            .push((NotificationType::Error, error.clone()));
-        }
-      }
-      cx.notify();
-    })
     .detach();
 
     // Start periodic container refresh using interval from settings
@@ -121,21 +124,24 @@ impl ContainersView {
     .detach();
 
     Self {
-      docker_state,
+      _docker_state: docker_state,
       container_list,
       selected_container: None,
       active_tab: 0,
       terminal_view: None,
+      logs_editor: None,
+      inspect_editor: None,
       container_tab_state: ContainerTabState::new(),
-      pending_notifications: Vec::new(),
+      last_synced_logs: String::new(),
+      last_synced_inspect: String::new(),
     }
   }
 
-  fn show_create_dialog(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+  fn show_create_dialog(&mut self, window: &mut Window, cx: &mut Context<'_, Self>) {
     let dialog_entity = cx.new(CreateContainerDialog::new);
 
     window.open_dialog(cx, move |dialog, _window, cx| {
-      let colors = cx.theme().colors;
+      let _colors = cx.theme().colors;
       let dialog_clone = dialog_entity.clone();
       let dialog_clone2 = dialog_entity.clone();
 
@@ -181,18 +187,213 @@ impl ContainersView {
     });
   }
 
-  fn on_select_container(&mut self, container: &ContainerInfo, cx: &mut Context<Self>) {
+  fn show_rename_dialog(
+    &mut self,
+    container_id: String,
+    current_name: String,
+    window: &mut Window,
+    cx: &mut Context<'_, Self>,
+  ) {
+    use gpui_component::input::{Input, InputState};
+
+    let name_input = cx.new(|cx| InputState::new(window, cx).default_value(current_name));
+
+    window.open_dialog(cx, move |dialog, _window, _cx| {
+      let name_input_clone = name_input.clone();
+      let container_id = container_id.clone();
+
+      dialog
+        .title("Rename Container")
+        .min_w(px(400.))
+        .child(Input::new(&name_input).w_full())
+        .footer(move |_dialog_state, _, _window, _cx| {
+          let name_input = name_input_clone.clone();
+          let id = container_id.clone();
+
+          vec![Button::new("rename")
+            .label("Rename")
+            .primary()
+            .on_click(move |_ev, window, cx| {
+              let new_name = name_input.read(cx).text().to_string();
+              if !new_name.is_empty() {
+                services::rename_container(id.clone(), new_name, cx);
+                window.close_dialog(cx);
+              }
+            })
+            .into_any_element()]
+        })
+    });
+  }
+
+  fn show_commit_dialog(
+    &mut self,
+    container_id: String,
+    container_name: String,
+    window: &mut Window,
+    cx: &mut Context<'_, Self>,
+  ) {
+    use gpui_component::{
+      input::{Input, InputState},
+      v_flex,
+    };
+
+    let repo_input = cx.new(|cx| InputState::new(window, cx).placeholder("Repository (e.g., myrepo/myimage)"));
+    let tag_input = cx.new(|cx| InputState::new(window, cx).placeholder("Tag").default_value("latest".to_string()));
+    let comment_input = cx.new(|cx| {
+      InputState::new(window, cx).placeholder(format!("Comment (optional, from container: {})", container_name))
+    });
+
+    window.open_dialog(cx, move |dialog, _window, cx| {
+      let colors = cx.theme().colors;
+      let repo_clone = repo_input.clone();
+      let tag_clone = tag_input.clone();
+      let comment_clone = comment_input.clone();
+      let container_id = container_id.clone();
+
+      dialog
+        .title("Commit Container to Image")
+        .min_w(px(450.))
+        .child(
+          v_flex()
+            .gap(px(12.))
+            .child(
+              div()
+                .text_sm()
+                .text_color(colors.muted_foreground)
+                .child("Save the container's current state as a new image."),
+            )
+            .child(Input::new(&repo_input).w_full())
+            .child(Input::new(&tag_input).w_full())
+            .child(Input::new(&comment_input).w_full()),
+        )
+        .footer(move |_dialog_state, _, _window, _cx| {
+          let repo = repo_clone.clone();
+          let tag = tag_clone.clone();
+          let comment = comment_clone.clone();
+          let id = container_id.clone();
+
+          vec![Button::new("commit")
+            .label("Commit")
+            .primary()
+            .on_click(move |_ev, window, cx| {
+              let repo_text = repo.read(cx).text().to_string();
+              let tag_text = tag.read(cx).text().to_string();
+              let comment_text = comment.read(cx).text().to_string();
+
+              if !repo_text.is_empty() {
+                let comment_opt = if comment_text.is_empty() {
+                  None
+                } else {
+                  Some(comment_text)
+                };
+                services::commit_container(id.clone(), repo_text, tag_text, comment_opt, None, cx);
+                window.close_dialog(cx);
+              }
+            })
+            .into_any_element()]
+        })
+    });
+  }
+
+  fn show_export_dialog(
+    &mut self,
+    container_id: String,
+    container_name: String,
+    window: &mut Window,
+    cx: &mut Context<'_, Self>,
+  ) {
+    use gpui_component::{
+      input::{Input, InputState},
+      v_flex,
+    };
+
+    // Default path: ~/container_<name>.tar
+    let default_path = format!(
+      "{}/{}.tar",
+      std::env::var("HOME").unwrap_or_else(|_| ".".to_string()),
+      container_name
+    );
+
+    let path_input = cx.new(|cx| InputState::new(window, cx).default_value(default_path));
+
+    window.open_dialog(cx, move |dialog, _window, cx| {
+      let colors = cx.theme().colors;
+      let path_clone = path_input.clone();
+      let container_id = container_id.clone();
+
+      dialog
+        .title("Export Container")
+        .min_w(px(500.))
+        .child(
+          v_flex()
+            .gap(px(12.))
+            .child(
+              div()
+                .text_sm()
+                .text_color(colors.muted_foreground)
+                .child("Export the container's filesystem as a tar archive."),
+            )
+            .child(Input::new(&path_input).w_full()),
+        )
+        .footer(move |_dialog_state, _, _window, _cx| {
+          let path = path_clone.clone();
+          let id = container_id.clone();
+
+          vec![Button::new("export")
+            .label("Export")
+            .primary()
+            .on_click(move |_ev, window, cx| {
+              let path_text = path.read(cx).text().to_string();
+              if !path_text.is_empty() {
+                services::export_container(id.clone(), path_text, cx);
+                window.close_dialog(cx);
+              }
+            })
+            .into_any_element()]
+        })
+    });
+  }
+
+  fn on_select_container(
+    &mut self,
+    container: &ContainerInfo,
+    window: &mut Window,
+    cx: &mut Context<'_, Self>,
+  ) {
     self.selected_container = Some(container.clone());
     self.active_tab = 0;
     self.terminal_view = None;
+    // Clear synced tracking for new container
+    self.last_synced_logs.clear();
+    self.last_synced_inspect.clear();
+
+    // Create editors for logs and inspect with syntax highlighting
+    // Note: code_editor() is required for replace() method to work
+    self.logs_editor = Some(cx.new(|cx| {
+      InputState::new(window, cx)
+        .multi_line(true)
+        .code_editor("log")
+        .line_number(true)
+        .searchable(true)
+        .soft_wrap(false)
+    }));
+
+    self.inspect_editor = Some(cx.new(|cx| {
+      InputState::new(window, cx)
+        .multi_line(true)
+        .code_editor("json")
+        .line_number(true)
+        .searchable(true)
+        .soft_wrap(false)
+    }));
 
     // Load logs for the selected container
-    self.load_container_data(&container.id, cx);
+    self.load_container_data(&container.id, window, cx);
 
     cx.notify();
   }
 
-  fn on_tab_change(&mut self, tab: usize, window: &mut Window, cx: &mut Context<Self>) {
+  fn on_tab_change(&mut self, tab: usize, window: &mut Window, cx: &mut Context<'_, Self>) {
     self.active_tab = tab;
 
     // If switching to terminal tab, create terminal view
@@ -218,7 +419,7 @@ impl ContainersView {
     cx.notify();
   }
 
-  fn on_navigate_path(&mut self, path: &str, cx: &mut Context<Self>) {
+  fn on_navigate_path(&mut self, path: &str, cx: &mut Context<'_, Self>) {
     self.container_tab_state.current_path = path.to_string();
     if let Some(ref container) = self.selected_container
       && container.state.is_running()
@@ -228,7 +429,7 @@ impl ContainersView {
     }
   }
 
-  fn load_container_files(&mut self, container_id: &str, path: &str, cx: &mut Context<Self>) {
+  fn load_container_files(&mut self, container_id: &str, path: &str, cx: &mut Context<'_, Self>) {
     self.container_tab_state.files_loading = true;
     self.container_tab_state.files.clear();
     cx.notify();
@@ -261,7 +462,12 @@ impl ContainersView {
     .detach();
   }
 
-  fn load_container_data(&mut self, container_id: &str, cx: &mut Context<Self>) {
+  fn load_container_data(
+    &mut self,
+    container_id: &str,
+    _window: &mut Window,
+    cx: &mut Context<'_, Self>,
+  ) {
     self.container_tab_state.logs_loading = true;
     self.container_tab_state.inspect_loading = true;
 
@@ -330,19 +536,37 @@ impl ContainersView {
     .detach();
   }
 
-  fn on_refresh_logs(&mut self, cx: &mut Context<Self>) {
+  fn on_refresh_logs(&mut self, window: &mut Window, cx: &mut Context<'_, Self>) {
     if let Some(ref container) = self.selected_container.clone() {
-      self.load_container_data(&container.id, cx);
+      self.load_container_data(&container.id, window, cx);
     }
   }
 }
 
 impl Render for ContainersView {
-  fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
-    // Push any pending notifications
-    for (notification_type, message) in self.pending_notifications.drain(..) {
-      use gpui::SharedString;
-      window.push_notification((notification_type, SharedString::from(message)), cx);
+  fn render(&mut self, window: &mut Window, cx: &mut Context<'_, Self>) -> impl IntoElement {
+    // Sync editor content with loaded data (only when source data changes, not editor content)
+    if let Some(ref editor) = self.logs_editor {
+      let logs = &self.container_tab_state.logs;
+      if !logs.is_empty() && !self.container_tab_state.logs_loading && self.last_synced_logs != *logs {
+        let logs_clone = logs.clone();
+        editor.update(cx, |state, cx| {
+          state.replace(&logs_clone, window, cx);
+        });
+        self.last_synced_logs = logs.clone();
+      }
+    }
+
+    if let Some(ref editor) = self.inspect_editor {
+      let inspect = &self.container_tab_state.inspect;
+      if !inspect.is_empty() && !self.container_tab_state.inspect_loading && self.last_synced_inspect != *inspect
+      {
+        let inspect_clone = inspect.clone();
+        editor.update(cx, |state, cx| {
+          state.replace(&inspect_clone, window, cx);
+        });
+        self.last_synced_inspect = inspect.clone();
+      }
     }
 
     let colors = cx.theme().colors;
@@ -350,6 +574,8 @@ impl Render for ContainersView {
     let active_tab = self.active_tab;
     let container_tab_state = self.container_tab_state.clone();
     let terminal_view = self.terminal_view.clone();
+    let logs_editor = self.logs_editor.clone();
+    let inspect_editor = self.inspect_editor.clone();
 
     // Build detail panel
     let detail = ContainerDetail::new()
@@ -357,11 +583,13 @@ impl Render for ContainersView {
       .active_tab(active_tab)
       .container_state(container_tab_state)
       .terminal_view(terminal_view)
+      .logs_editor(logs_editor)
+      .inspect_editor(inspect_editor)
       .on_tab_change(cx.listener(|this, tab: &usize, window, cx| {
         this.on_tab_change(*tab, window, cx);
       }))
-      .on_refresh_logs(cx.listener(|this, _: &(), _window, cx| {
-        this.on_refresh_logs(cx);
+      .on_refresh_logs(cx.listener(|this, _: &(), window, cx| {
+        this.on_refresh_logs(window, cx);
       }))
       .on_navigate_path(cx.listener(|this, path: &str, _window, cx| {
         this.on_navigate_path(path, cx);

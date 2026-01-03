@@ -121,7 +121,7 @@ impl VolumeDetail {
   }
 
   fn render_info_tab(&self, volume: &VolumeInfo, cx: &App) -> gpui::Div {
-    let colors = &cx.theme().colors;
+    let _colors = &cx.theme().colors;
 
     // Basic info rows
     let mut basic_info = vec![("Name", volume.name.clone()), ("Size", volume.display_size())];

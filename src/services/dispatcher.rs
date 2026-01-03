@@ -946,6 +946,222 @@ pub fn kill_container(id: String, cx: &mut App) {
   .detach();
 }
 
+pub fn rename_container(id: String, new_name: String, cx: &mut App) {
+  let task_id = start_task(cx, "rename_container", "Renaming container...".to_string());
+  let disp = dispatcher(cx);
+  let client = docker_client();
+
+  let tokio_task = Tokio::spawn(cx, async move {
+    let guard = client.read().await;
+    let docker = guard
+      .as_ref()
+      .ok_or_else(|| anyhow::anyhow!("Docker client not connected"))?;
+    docker.rename_container(&id, &new_name).await
+  });
+
+  cx.spawn(async move |cx| {
+    let result = tokio_task.await;
+    cx.update(|cx| match result {
+      Ok(Ok(_)) => {
+        complete_task(cx, task_id);
+        disp.update(cx, |_, cx| {
+          cx.emit(DispatcherEvent::TaskCompleted {
+            name: "rename_container".to_string(),
+            message: "Container renamed".to_string(),
+          });
+        });
+        refresh_containers(cx);
+      }
+      Ok(Err(e)) => {
+        fail_task(cx, task_id, e.to_string());
+        disp.update(cx, |_, cx| {
+          cx.emit(DispatcherEvent::TaskFailed {
+            name: "rename_container".to_string(),
+            error: format!("Failed to rename container: {}", e),
+          });
+        });
+      }
+      Err(join_err) => {
+        fail_task(cx, task_id, join_err.to_string());
+        disp.update(cx, |_, cx| {
+          cx.emit(DispatcherEvent::TaskFailed {
+            name: "rename_container".to_string(),
+            error: format!("Task failed: {}", join_err),
+          });
+        });
+      }
+    })
+  })
+  .detach();
+}
+
+pub fn commit_container(
+  id: String,
+  repo: String,
+  tag: String,
+  comment: Option<String>,
+  author: Option<String>,
+  cx: &mut App,
+) {
+  let task_id = start_task(cx, "commit_container", "Committing container...".to_string());
+  let disp = dispatcher(cx);
+  let client = docker_client();
+
+  let tokio_task = Tokio::spawn(cx, async move {
+    let guard = client.read().await;
+    let docker = guard
+      .as_ref()
+      .ok_or_else(|| anyhow::anyhow!("Docker client not connected"))?;
+    docker
+      .commit_container(&id, &repo, &tag, comment.as_deref(), author.as_deref())
+      .await
+  });
+
+  cx.spawn(async move |cx| {
+    let result = tokio_task.await;
+    cx.update(|cx| match result {
+      Ok(Ok(image_id)) => {
+        complete_task(cx, task_id);
+        disp.update(cx, |_, cx| {
+          cx.emit(DispatcherEvent::TaskCompleted {
+            name: "commit_container".to_string(),
+            message: format!("Container committed as image: {}", &image_id[..12.min(image_id.len())]),
+          });
+        });
+        refresh_images(cx);
+      }
+      Ok(Err(e)) => {
+        fail_task(cx, task_id, e.to_string());
+        disp.update(cx, |_, cx| {
+          cx.emit(DispatcherEvent::TaskFailed {
+            name: "commit_container".to_string(),
+            error: format!("Failed to commit container: {}", e),
+          });
+        });
+      }
+      Err(join_err) => {
+        fail_task(cx, task_id, join_err.to_string());
+        disp.update(cx, |_, cx| {
+          cx.emit(DispatcherEvent::TaskFailed {
+            name: "commit_container".to_string(),
+            error: format!("Task failed: {}", join_err),
+          });
+        });
+      }
+    })
+  })
+  .detach();
+}
+
+pub fn export_container(id: String, output_path: String, cx: &mut App) {
+  let task_id = start_task(cx, "export_container", "Exporting container...".to_string());
+  let disp = dispatcher(cx);
+  let client = docker_client();
+
+  let tokio_task = Tokio::spawn(cx, async move {
+    let guard = client.read().await;
+    let docker = guard
+      .as_ref()
+      .ok_or_else(|| anyhow::anyhow!("Docker client not connected"))?;
+    docker.export_container(&id, &output_path).await
+  });
+
+  cx.spawn(async move |cx| {
+    let result = tokio_task.await;
+    cx.update(|cx| match result {
+      Ok(Ok(_)) => {
+        complete_task(cx, task_id);
+        disp.update(cx, |_, cx| {
+          cx.emit(DispatcherEvent::TaskCompleted {
+            name: "export_container".to_string(),
+            message: "Container exported".to_string(),
+          });
+        });
+      }
+      Ok(Err(e)) => {
+        fail_task(cx, task_id, e.to_string());
+        disp.update(cx, |_, cx| {
+          cx.emit(DispatcherEvent::TaskFailed {
+            name: "export_container".to_string(),
+            error: format!("Failed to export container: {}", e),
+          });
+        });
+      }
+      Err(join_err) => {
+        fail_task(cx, task_id, join_err.to_string());
+        disp.update(cx, |_, cx| {
+          cx.emit(DispatcherEvent::TaskFailed {
+            name: "export_container".to_string(),
+            error: format!("Task failed: {}", join_err),
+          });
+        });
+      }
+    })
+  })
+  .detach();
+}
+
+pub fn get_container_processes(id: String, cx: &mut App) {
+  let state = docker_state(cx);
+  let client = docker_client();
+
+  let tokio_task = Tokio::spawn(cx, async move {
+    let guard = client.read().await;
+    let docker = guard
+      .as_ref()
+      .ok_or_else(|| anyhow::anyhow!("Docker client not connected"))?;
+    docker.get_container_top(&id).await.map(|procs| (id, procs))
+  });
+
+  cx.spawn(async move |cx| {
+    let result = tokio_task.await;
+    cx.update(|cx| {
+      if let Ok(Ok((container_id, processes))) = result {
+        state.update(cx, |_state, cx| {
+          cx.emit(StateChanged::ContainerProcessesLoaded {
+            container_id,
+            processes,
+          });
+        });
+      }
+    })
+  })
+  .detach();
+}
+
+/// Request to open rename dialog for a container
+pub fn request_rename_container(id: String, current_name: String, cx: &mut App) {
+  let state = docker_state(cx);
+  state.update(cx, |_state, cx| {
+    cx.emit(StateChanged::RenameContainerRequest {
+      container_id: id,
+      current_name,
+    });
+  });
+}
+
+/// Request to open commit dialog for a container
+pub fn request_commit_container(id: String, container_name: String, cx: &mut App) {
+  let state = docker_state(cx);
+  state.update(cx, |_state, cx| {
+    cx.emit(StateChanged::CommitContainerRequest {
+      container_id: id,
+      container_name,
+    });
+  });
+}
+
+/// Request to open export dialog for a container
+pub fn request_export_container(id: String, container_name: String, cx: &mut App) {
+  let state = docker_state(cx);
+  state.update(cx, |_state, cx| {
+    cx.emit(StateChanged::ExportContainerRequest {
+      container_id: id,
+      container_name,
+    });
+  });
+}
+
 // Container tab navigation functions
 pub fn open_container_terminal(id: String, cx: &mut App) {
   let state = docker_state(cx);
@@ -972,7 +1188,7 @@ pub fn open_container_inspect(id: String, cx: &mut App) {
   state.update(cx, |_state, cx| {
     cx.emit(StateChanged::ContainerTabRequest {
       container_id: id,
-      tab: 3, // Inspect is tab 3
+      tab: 4, // Inspect is tab 4
     });
   });
 }
@@ -2264,7 +2480,7 @@ pub fn set_namespace(namespace: String, cx: &mut App) {
 
 /// Delete a pod
 pub fn delete_pod(name: String, namespace: String, cx: &mut App) {
-  let state = docker_state(cx);
+  let _state = docker_state(cx);
   let disp = dispatcher(cx);
   let task_id = start_task(cx, "delete_pod", format!("Deleting pod {}", name));
 
@@ -2426,7 +2642,7 @@ pub fn refresh_services(cx: &mut App) {
 pub fn delete_service(name: String, namespace: String, cx: &mut App) {
   let task_id = start_task(cx, "delete_service", format!("Deleting service '{}'...", name));
   let name_clone = name.clone();
-  let state = docker_state(cx);
+  let _state = docker_state(cx);
   let disp = dispatcher(cx);
 
   let tokio_task = Tokio::spawn(cx, async move {
@@ -2577,7 +2793,7 @@ pub fn refresh_deployments(cx: &mut App) {
 pub fn delete_deployment(name: String, namespace: String, cx: &mut App) {
   let task_id = start_task(cx, "delete_deployment", format!("Deleting deployment '{}'...", name));
   let name_clone = name.clone();
-  let state = docker_state(cx);
+  let _state = docker_state(cx);
   let disp = dispatcher(cx);
 
   let tokio_task = Tokio::spawn(cx, async move {

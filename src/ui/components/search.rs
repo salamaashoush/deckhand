@@ -12,7 +12,7 @@ pub struct SearchBar {
 }
 
 impl SearchBar {
-  pub fn new(placeholder: &'static str, window: &mut Window, cx: &mut Context<Self>) -> Self {
+  pub fn new(placeholder: &'static str, window: &mut Window, cx: &mut Context<'_, Self>) -> Self {
     let input_state = cx.new(|cx| InputState::new(window, cx).placeholder(placeholder));
 
     Self {
@@ -29,7 +29,7 @@ impl SearchBar {
     self.input_state.read(cx).text().to_string().is_empty()
   }
 
-  pub fn clear(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+  pub fn clear(&mut self, window: &mut Window, cx: &mut Context<'_, Self>) {
     // Recreate the input state to clear it
     self.input_state = cx.new(|cx| InputState::new(window, cx).placeholder(self.placeholder));
     cx.notify();
@@ -37,7 +37,7 @@ impl SearchBar {
 }
 
 impl Render for SearchBar {
-  fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+  fn render(&mut self, _window: &mut Window, cx: &mut Context<'_, Self>) -> impl IntoElement {
     let colors = cx.theme().colors;
     let query = self.input_state.read(cx).text().to_string();
 

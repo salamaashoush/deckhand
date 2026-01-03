@@ -116,10 +116,10 @@ impl DockerClient {
     let docker = self.client()?;
     let labels_map: HashMap<String, String> = labels.into_iter().collect();
 
-    let config = bollard::volume::CreateVolumeOptions {
-      name: name.to_string(),
-      driver: driver.to_string(),
-      labels: labels_map,
+    let config = bollard::models::VolumeCreateOptions {
+      name: Some(name.to_string()),
+      driver: Some(driver.to_string()),
+      labels: Some(labels_map),
       ..Default::default()
     };
 

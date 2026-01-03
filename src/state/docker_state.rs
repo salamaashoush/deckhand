@@ -70,6 +70,26 @@ pub enum StateChanged {
     container_id: String,
     tab: usize,
   },
+  /// Container processes loaded
+  ContainerProcessesLoaded {
+    container_id: String,
+    processes: Vec<Vec<String>>,
+  },
+  /// Request to open rename dialog for a container
+  RenameContainerRequest {
+    container_id: String,
+    current_name: String,
+  },
+  /// Request to open commit dialog for a container
+  CommitContainerRequest {
+    container_id: String,
+    container_name: String,
+  },
+  /// Request to open export dialog for a container
+  ExportContainerRequest {
+    container_id: String,
+    container_name: String,
+  },
   /// Request to open a pod with a specific tab
   PodTabRequest {
     pod_name: String,

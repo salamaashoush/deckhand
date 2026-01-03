@@ -1,10 +1,8 @@
 use anyhow::Result;
-use bollard::container::PruneContainersOptions;
-use bollard::image::PruneImagesOptions;
-use bollard::network::PruneNetworksOptions;
-use bollard::volume::PruneVolumesOptions;
+use bollard::query_parameters::{
+  PruneContainersOptions, PruneImagesOptions, PruneNetworksOptions, PruneVolumesOptions,
+};
 use serde::{Deserialize, Serialize};
-use std::collections::HashMap;
 
 use super::DockerClient;
 
@@ -24,7 +22,10 @@ impl PruneResult {
   }
 
   pub fn total_items_deleted(&self) -> usize {
-    self.containers_deleted.len() + self.images_deleted.len() + self.volumes_deleted.len() + self.networks_deleted.len()
+    self.containers_deleted.len()
+      + self.images_deleted.len()
+      + self.volumes_deleted.len()
+      + self.networks_deleted.len()
   }
 
   pub fn is_empty(&self) -> bool {
@@ -37,10 +38,7 @@ impl DockerClient {
   pub async fn prune_containers(&self) -> Result<PruneResult> {
     let docker = self.client()?;
 
-    let options = PruneContainersOptions::<String> {
-      filters: HashMap::new(),
-    };
-
+    let options = PruneContainersOptions::default();
     let response = docker.prune_containers(Some(options)).await?;
 
     Ok(PruneResult {
@@ -52,14 +50,18 @@ impl DockerClient {
 
   /// Prune unused images
   pub async fn prune_images(&self, dangling_only: bool) -> Result<PruneResult> {
+    use std::collections::HashMap;
     let docker = self.client()?;
 
-    let mut filters = HashMap::new();
-    if dangling_only {
-      filters.insert("dangling", vec!["true"]);
-    }
-
-    let options = PruneImagesOptions { filters };
+    let options = PruneImagesOptions {
+      filters: if dangling_only {
+        let mut filters = HashMap::new();
+        filters.insert("dangling".to_string(), vec!["true".to_string()]);
+        Some(filters)
+      } else {
+        None
+      },
+    };
 
     let response = docker.prune_images(Some(options)).await?;
 
@@ -81,10 +83,7 @@ impl DockerClient {
   pub async fn prune_volumes(&self) -> Result<PruneResult> {
     let docker = self.client()?;
 
-    let options = PruneVolumesOptions::<String> {
-      filters: HashMap::new(),
-    };
-
+    let options = PruneVolumesOptions::default();
     let response = docker.prune_volumes(Some(options)).await?;
 
     Ok(PruneResult {
@@ -98,10 +97,7 @@ impl DockerClient {
   pub async fn prune_networks(&self) -> Result<PruneResult> {
     let docker = self.client()?;
 
-    let options = PruneNetworksOptions::<String> {
-      filters: HashMap::new(),
-    };
-
+    let options = PruneNetworksOptions::default();
     let response = docker.prune_networks(Some(options)).await?;
 
     Ok(PruneResult {

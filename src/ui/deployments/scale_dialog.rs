@@ -19,7 +19,7 @@ pub struct ScaleDialog {
 }
 
 impl ScaleDialog {
-  pub fn new(deployment_name: String, namespace: String, current_replicas: i32, cx: &mut Context<Self>) -> Self {
+  pub fn new(deployment_name: String, namespace: String, current_replicas: i32, cx: &mut Context<'_, Self>) -> Self {
     let focus_handle = cx.focus_handle();
 
     Self {
@@ -31,7 +31,7 @@ impl ScaleDialog {
     }
   }
 
-  fn ensure_input(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+  fn ensure_input(&mut self, window: &mut Window, cx: &mut Context<'_, Self>) {
     if self.replicas_input.is_none() {
       self.replicas_input =
         Some(cx.new(|cx| InputState::new(window, cx).default_value(self.current_replicas.to_string())));
@@ -64,7 +64,7 @@ impl Focusable for ScaleDialog {
 }
 
 impl Render for ScaleDialog {
-  fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+  fn render(&mut self, window: &mut Window, cx: &mut Context<'_, Self>) -> impl IntoElement {
     self.ensure_input(window, cx);
 
     let colors = cx.theme().colors;

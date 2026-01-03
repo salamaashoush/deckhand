@@ -14,14 +14,14 @@ use crate::state::{DockerState, StateChanged, docker_state};
 
 /// Main services view with list and detail panels
 pub struct ServicesView {
-  docker_state: Entity<DockerState>,
+  _docker_state: Entity<DockerState>,
   list: Entity<ServiceList>,
   detail: Entity<ServiceDetail>,
   selected_service: Option<ServiceInfo>,
 }
 
 impl ServicesView {
-  pub fn new(window: &mut Window, cx: &mut Context<Self>) -> Self {
+  pub fn new(window: &mut Window, cx: &mut Context<'_, Self>) -> Self {
     let docker_state = docker_state(cx);
 
     let list = cx.new(|cx| ServiceList::new(window, cx));
@@ -77,18 +77,18 @@ impl ServicesView {
     services::refresh_services(cx);
 
     Self {
-      docker_state,
+      _docker_state: docker_state,
       list,
       detail,
       selected_service: None,
     }
   }
 
-  fn show_create_dialog(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+  fn show_create_dialog(&mut self, window: &mut Window, cx: &mut Context<'_, Self>) {
     let dialog_entity = cx.new(CreateServiceDialog::new);
 
     window.open_dialog(cx, move |dialog, _window, cx| {
-      let colors = cx.theme().colors;
+      let _colors = cx.theme().colors;
       let dialog_clone = dialog_entity.clone();
 
       dialog
@@ -120,7 +120,7 @@ impl ServicesView {
 }
 
 impl Render for ServicesView {
-  fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+  fn render(&mut self, _window: &mut Window, cx: &mut Context<'_, Self>) -> impl IntoElement {
     let colors = cx.theme().colors;
 
     div()

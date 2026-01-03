@@ -3,6 +3,7 @@ use gpui_component::{
   Icon, IconName, Selectable, Sizable,
   button::{Button, ButtonVariants},
   h_flex,
+  input::{Input, InputState},
   scroll::ScrollableElement,
   tab::{Tab, TabBar},
   theme::ActiveTheme,
@@ -26,6 +27,7 @@ pub struct MachineDetail {
   active_tab: usize,
   machine_state: Option<MachineTabState>,
   terminal_view: Option<Entity<TerminalView>>,
+  logs_editor: Option<Entity<InputState>>,
   on_start: Option<MachineActionCallback>,
   on_stop: Option<MachineActionCallback>,
   on_restart: Option<MachineActionCallback>,
@@ -43,6 +45,7 @@ impl MachineDetail {
       active_tab: 0,
       machine_state: None,
       terminal_view: None,
+      logs_editor: None,
       on_start: None,
       on_stop: None,
       on_restart: None,
@@ -71,6 +74,11 @@ impl MachineDetail {
 
   pub fn terminal_view(mut self, view: Option<Entity<TerminalView>>) -> Self {
     self.terminal_view = view;
+    self
+  }
+
+  pub fn logs_editor(mut self, editor: Option<Entity<InputState>>) -> Self {
+    self.logs_editor = editor;
     self
   }
 
@@ -281,26 +289,30 @@ impl MachineDetail {
 
   fn render_logs_tab(&self, cx: &App) -> gpui::Div {
     let colors = &cx.theme().colors;
-
-    let logs_content = self
-      .machine_state
-      .as_ref()
-      .map(|s| s.logs.clone())
-      .unwrap_or_else(|| "Loading logs...".to_string());
-
     let is_loading = self.machine_state.as_ref().map(|s| s.logs_loading).unwrap_or(false);
-
     let on_refresh = self.on_refresh_logs.clone();
 
-    v_flex()
-      .flex_1()
-      .w_full()
-      .p(px(16.))
-      .gap(px(8.))
-      .child(
+    if is_loading {
+      return v_flex()
+        .size_full()
+        .p(px(16.))
+        .child(
+          div()
+            .text_sm()
+            .text_color(colors.muted_foreground)
+            .child("Loading logs..."),
+        );
+    }
+
+    if let Some(ref editor) = self.logs_editor {
+      return div().size_full().flex().flex_col().child(
         h_flex()
+          .w_full()
+          .px(px(16.))
+          .py(px(8.))
           .items_center()
           .justify_between()
+          .flex_shrink_0()
           .child(
             div()
               .text_sm()
@@ -319,21 +331,32 @@ impl MachineDetail {
                 })
               }),
           ),
-      )
-      .child(
+      ).child(
         div()
           .flex_1()
-          .w_full()
-          .bg(colors.sidebar)
-          .rounded(px(8.))
-          .p(px(12.))
-          .overflow_y_scrollbar()
-          .font_family("monospace")
-          .text_xs()
-          .text_color(colors.foreground)
-          .when(is_loading, |el| el.child("Loading logs..."))
-          .when(!is_loading, |el| el.child(logs_content)),
-      )
+          .min_h_0()
+          .child(Input::new(editor).size_full().appearance(false).disabled(true)),
+      );
+    }
+
+    // Fallback to plain text
+    let logs_content = self
+      .machine_state
+      .as_ref()
+      .map(|s| s.logs.clone())
+      .unwrap_or_default();
+
+    div().size_full().p(px(16.)).child(
+      div()
+        .size_full()
+        .overflow_y_scrollbar()
+        .bg(colors.sidebar)
+        .p(px(12.))
+        .font_family("monospace")
+        .text_xs()
+        .text_color(colors.foreground)
+        .child(logs_content),
+    )
   }
 
   fn render_terminal_tab(&self, cx: &App) -> gpui::Div {
@@ -595,9 +618,11 @@ impl MachineDetail {
       .items_center()
       .border_b_1()
       .border_color(colors.border)
+      .flex_shrink_0()
       .child(
         TabBar::new("machine-tabs")
           .flex_1()
+          .py(px(0.))
           .children(tabs.iter().enumerate().map(|(i, label)| {
             let on_tab_change = on_tab_change.clone();
             Tab::new()
@@ -693,18 +718,19 @@ impl MachineDetail {
       _ => self.render_info_tab(machine, cx),
     };
 
-    // Terminal tab needs full height without scroll
-    let is_terminal_tab = self.active_tab == 2;
+    // Terminal and Logs tabs need full height without scroll (they handle their own scrolling)
+    let is_full_height_tab = self.active_tab == 1 || self.active_tab == 2;
 
-    let mut result = div().size_full().bg(colors.sidebar).flex().flex_col().child(toolbar);
+    let mut result = div().size_full().bg(colors.sidebar).flex().flex_col().overflow_hidden().child(toolbar);
 
-    if is_terminal_tab {
-      result = result.child(div().flex_1().min_h_0().w_full().child(content));
+    if is_full_height_tab {
+      result = result.child(div().flex_1().min_h_0().w_full().overflow_hidden().child(content));
     } else {
       result = result.child(
         div()
           .id("machine-detail-scroll")
           .flex_1()
+          .min_h_0()
           .overflow_y_scrollbar()
           .child(content)
           .child(div().h(px(100.))),

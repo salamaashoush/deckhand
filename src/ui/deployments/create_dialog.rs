@@ -130,7 +130,7 @@ pub struct CreateDeploymentDialog {
 }
 
 impl CreateDeploymentDialog {
-  pub fn new(cx: &mut Context<Self>) -> Self {
+  pub fn new(cx: &mut Context<'_, Self>) -> Self {
     let focus_handle = cx.focus_handle();
 
     Self {
@@ -160,7 +160,7 @@ impl CreateDeploymentDialog {
     }
   }
 
-  fn ensure_inputs(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+  fn ensure_inputs(&mut self, window: &mut Window, cx: &mut Context<'_, Self>) {
     if self.name_input.is_none() {
       self.name_input = Some(cx.new(|cx| InputState::new(window, cx).placeholder("e.g. my-deployment")));
     }
@@ -384,7 +384,7 @@ impl CreateDeploymentDialog {
       .child(div().text_xs().text_color(colors.muted_foreground).child(title))
   }
 
-  fn render_general_tab(&self, colors: &DialogColors, _cx: &mut Context<Self>) -> impl IntoElement {
+  fn render_general_tab(&self, colors: &DialogColors, _cx: &mut Context<'_, Self>) -> impl IntoElement {
     let name_input = self.name_input.clone().unwrap();
     let namespace_input = self.namespace_input.clone().unwrap();
     let image_input = self.image_input.clone().unwrap();
@@ -417,7 +417,7 @@ impl CreateDeploymentDialog {
       ))
   }
 
-  fn render_resources_tab(&self, colors: &DialogColors, _cx: &mut Context<Self>) -> impl IntoElement {
+  fn render_resources_tab(&self, colors: &DialogColors, _cx: &mut Context<'_, Self>) -> impl IntoElement {
     let cpu_limit = self.cpu_limit_input.clone().unwrap();
     let memory_limit = self.memory_limit_input.clone().unwrap();
     let cpu_request = self.cpu_request_input.clone().unwrap();
@@ -468,7 +468,7 @@ impl CreateDeploymentDialog {
       ))
   }
 
-  fn render_ports_tab(&self, colors: &DialogColors, cx: &mut Context<Self>) -> impl IntoElement {
+  fn render_ports_tab(&self, colors: &DialogColors, cx: &mut Context<'_, Self>) -> impl IntoElement {
     let port_name_input = self.port_name_input.clone().unwrap();
     let port_number_input = self.port_number_input.clone().unwrap();
     let port_protocol_tcp = self.port_protocol_tcp;
@@ -581,7 +581,7 @@ impl CreateDeploymentDialog {
       }))
   }
 
-  fn render_env_tab(&self, colors: &DialogColors, cx: &mut Context<Self>) -> impl IntoElement {
+  fn render_env_tab(&self, colors: &DialogColors, cx: &mut Context<'_, Self>) -> impl IntoElement {
     let env_key_input = self.env_key_input.clone().unwrap();
     let env_value_input = self.env_value_input.clone().unwrap();
     let sidebar_color = colors.sidebar;
@@ -668,7 +668,7 @@ impl CreateDeploymentDialog {
       }))
   }
 
-  fn render_labels_tab(&self, colors: &DialogColors, cx: &mut Context<Self>) -> impl IntoElement {
+  fn render_labels_tab(&self, colors: &DialogColors, cx: &mut Context<'_, Self>) -> impl IntoElement {
     let label_key_input = self.label_key_input.clone().unwrap();
     let label_value_input = self.label_value_input.clone().unwrap();
     let sidebar_color = colors.sidebar;
@@ -769,7 +769,7 @@ impl Focusable for CreateDeploymentDialog {
 }
 
 impl Render for CreateDeploymentDialog {
-  fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+  fn render(&mut self, window: &mut Window, cx: &mut Context<'_, Self>) -> impl IntoElement {
     self.ensure_inputs(window, cx);
 
     let theme_colors = cx.theme().colors;

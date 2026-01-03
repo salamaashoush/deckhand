@@ -1,13 +1,15 @@
-use gpui::{App, Context, Entity, Render, Styled, Window, div, prelude::*, px};
+use gpui::{App, Context, Entity, Render, SharedString, Styled, Window, div, prelude::*, px};
 use gpui_component::{
-  IconName, Root, WindowExt,
+  Icon, IconName, Root, WindowExt,
   button::{Button, ButtonVariants},
   h_flex,
+  notification::NotificationType,
   sidebar::{Sidebar, SidebarGroup, SidebarMenu, SidebarMenuItem},
   theme::{ActiveTheme, Theme, ThemeMode},
 };
 
-use crate::services::task_manager;
+use crate::assets::AppIcon;
+use crate::services::{DispatcherEvent, dispatcher, task_manager};
 use crate::state::{CurrentView, DockerState, StateChanged, docker_state};
 use crate::ui::activity::ActivityMonitorView;
 use crate::ui::compose::ComposeView;
@@ -37,10 +39,12 @@ pub struct DockerApp {
   deployments_view: Entity<DeploymentsView>,
   activity_view: Entity<ActivityMonitorView>,
   settings_view: Entity<SettingsView>,
+  // Centralized notification handling - prevents duplicate notifications on view switch
+  pending_notifications: Vec<(NotificationType, String)>,
 }
 
 impl DockerApp {
-  pub fn new(window: &mut Window, cx: &mut Context<Self>) -> Self {
+  pub fn new(window: &mut Window, cx: &mut Context<'_, Self>) -> Self {
     Theme::change(ThemeMode::Dark, Some(window), cx);
 
     let docker_state = docker_state(cx);
@@ -55,6 +59,21 @@ impl DockerApp {
 
     // Observe theme changes to re-render when theme is switched
     cx.observe_global::<Theme>(|_this, cx| {
+      cx.notify();
+    })
+    .detach();
+
+    // Subscribe to dispatcher events for centralized notification handling
+    let disp = dispatcher(cx);
+    cx.subscribe(&disp, |this, _disp, event: &DispatcherEvent, cx| {
+      match event {
+        DispatcherEvent::TaskCompleted { message, .. } => {
+          this.pending_notifications.push((NotificationType::Success, message.clone()));
+        }
+        DispatcherEvent::TaskFailed { error, .. } => {
+          this.pending_notifications.push((NotificationType::Error, error.clone()));
+        }
+      }
       cx.notify();
     })
     .detach();
@@ -96,15 +115,16 @@ impl DockerApp {
       deployments_view,
       activity_view,
       settings_view,
+      pending_notifications: Vec::new(),
     }
   }
 
-  fn show_setup_dialog(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+  fn show_setup_dialog(&mut self, window: &mut Window, cx: &mut Context<'_, Self>) {
     let dialog_entity = cx.new(SetupDialog::new);
 
     window.open_dialog(cx, move |dialog, _window, cx| {
       let dialog_clone = dialog_entity.clone();
-      let colors = cx.theme().colors;
+      let _colors = cx.theme().colors;
 
       dialog
         .title("Setup Required")
@@ -139,7 +159,7 @@ impl DockerApp {
     });
   }
 
-  fn show_prune_dialog(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+  fn show_prune_dialog(&mut self, window: &mut Window, cx: &mut Context<'_, Self>) {
     let dialog_entity = cx.new(PruneDialog::new);
 
     window.open_dialog(cx, move |dialog, _window, _cx| {
@@ -278,7 +298,7 @@ impl DockerApp {
                         )
                         .child(
                             SidebarMenuItem::new("Prune")
-                                .icon(IconName::Delete)
+                                .icon(Icon::new(AppIcon::Trash))
                                 .on_click(cx.listener(|this, _ev, window, cx| {
                                     this.show_prune_dialog(window, cx);
                                 })),
@@ -310,21 +330,6 @@ impl DockerApp {
       CurrentView::Deployments => div().size_full().child(self.deployments_view.clone()),
       CurrentView::ActivityMonitor => div().size_full().child(self.activity_view.clone()),
       CurrentView::Settings => div().size_full().child(self.settings_view.clone()),
-      _ => {
-        // Placeholder for views not yet implemented
-        let colors = &cx.theme().colors;
-        div()
-          .size_full()
-          .bg(colors.background)
-          .flex()
-          .items_center()
-          .justify_center()
-          .child(
-            div()
-              .text_color(colors.muted_foreground)
-              .child(format!("{:?} view coming soon", state.current_view)),
-          )
-      }
     }
   }
 
@@ -359,7 +364,12 @@ impl DockerApp {
 }
 
 impl Render for DockerApp {
-  fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+  fn render(&mut self, window: &mut Window, cx: &mut Context<'_, Self>) -> impl IntoElement {
+    // Push any pending notifications (centralized handling)
+    for (notification_type, message) in self.pending_notifications.drain(..) {
+      window.push_notification((notification_type, SharedString::from(message)), cx);
+    }
+
     // Required layers for gpui-component
     let notification_layer = Root::render_notification_layer(window, cx);
     let dialog_layer = Root::render_dialog_layer(window, cx);

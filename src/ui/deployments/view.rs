@@ -15,14 +15,14 @@ use crate::state::{DockerState, StateChanged, docker_state};
 
 /// Main deployments view with list and detail panels
 pub struct DeploymentsView {
-  docker_state: Entity<DockerState>,
+  _docker_state: Entity<DockerState>,
   list: Entity<DeploymentList>,
   detail: Entity<DeploymentDetail>,
   selected_deployment: Option<DeploymentInfo>,
 }
 
 impl DeploymentsView {
-  pub fn new(window: &mut Window, cx: &mut Context<Self>) -> Self {
+  pub fn new(window: &mut Window, cx: &mut Context<'_, Self>) -> Self {
     let docker_state = docker_state(cx);
 
     let list = cx.new(|cx| DeploymentList::new(window, cx));
@@ -104,14 +104,14 @@ impl DeploymentsView {
     services::refresh_deployments(cx);
 
     Self {
-      docker_state,
+      _docker_state: docker_state,
       list,
       detail,
       selected_deployment: None,
     }
   }
 
-  fn show_create_dialog(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+  fn show_create_dialog(&mut self, window: &mut Window, cx: &mut Context<'_, Self>) {
     let dialog_entity = cx.new(CreateDeploymentDialog::new);
 
     window.open_dialog(cx, move |dialog, _window, cx| {
@@ -151,7 +151,7 @@ impl DeploymentsView {
     namespace: String,
     current_replicas: i32,
     window: &mut Window,
-    cx: &mut Context<Self>,
+    cx: &mut Context<'_, Self>,
   ) {
     let dialog_entity = cx.new(|cx| ScaleDialog::new(deployment_name.clone(), namespace.clone(), current_replicas, cx));
 
@@ -188,7 +188,7 @@ impl DeploymentsView {
 }
 
 impl Render for DeploymentsView {
-  fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+  fn render(&mut self, _window: &mut Window, cx: &mut Context<'_, Self>) -> impl IntoElement {
     let colors = cx.theme().colors;
 
     div()

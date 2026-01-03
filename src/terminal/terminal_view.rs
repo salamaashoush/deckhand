@@ -23,7 +23,7 @@ pub struct TerminalView {
 }
 
 impl TerminalView {
-  pub fn new(session_type: TerminalSessionType, _window: &mut Window, cx: &mut Context<Self>) -> Self {
+  pub fn new(session_type: TerminalSessionType, _window: &mut Window, cx: &mut Context<'_, Self>) -> Self {
     let focus_handle = cx.focus_handle();
     let buffer = Arc::new(Mutex::new(TerminalBuffer::default()));
 
@@ -46,11 +46,11 @@ impl TerminalView {
     view
   }
 
-  pub fn for_colima(profile: Option<String>, window: &mut Window, cx: &mut Context<Self>) -> Self {
+  pub fn for_colima(profile: Option<String>, window: &mut Window, cx: &mut Context<'_, Self>) -> Self {
     Self::new(TerminalSessionType::colima_ssh(profile), window, cx)
   }
 
-  pub fn connect(&mut self, cx: &mut Context<Self>) {
+  pub fn connect(&mut self, cx: &mut Context<'_, Self>) {
     match PtyTerminal::new(self.session_type.clone()) {
       Ok(terminal) => {
         self.buffer = terminal.buffer();
@@ -66,7 +66,7 @@ impl TerminalView {
     cx.notify();
   }
 
-  fn start_polling(&mut self, cx: &mut Context<Self>) {
+  fn start_polling(&mut self, cx: &mut Context<'_, Self>) {
     cx.spawn(async move |this, cx| {
       loop {
         gpui::Timer::after(std::time::Duration::from_millis(16)).await;
@@ -106,7 +106,7 @@ impl Focusable for TerminalView {
 }
 
 impl Render for TerminalView {
-  fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+  fn render(&mut self, window: &mut Window, cx: &mut Context<'_, Self>) -> impl IntoElement {
     let font_size = self.font_size;
     let line_height = self.line_height;
 

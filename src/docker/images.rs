@@ -1,5 +1,5 @@
 use anyhow::Result;
-use bollard::image::{CreateImageOptions, ListImagesOptions, RemoveImageOptions};
+use bollard::query_parameters::{CreateImageOptions, ListImagesOptions, RemoveImageOptions};
 use chrono::{DateTime, Utc};
 use futures::StreamExt;
 use serde::{Deserialize, Serialize};
@@ -43,7 +43,7 @@ impl DockerClient {
   pub async fn list_images(&self, all: bool) -> Result<Vec<ImageInfo>> {
     let docker = self.client()?;
 
-    let options = ListImagesOptions::<String> {
+    let options = ListImagesOptions {
       all,
       ..Default::default()
     };
@@ -74,7 +74,14 @@ impl DockerClient {
   pub async fn remove_image(&self, id: &str, force: bool) -> Result<()> {
     let docker = self.client()?;
     docker
-      .remove_image(id, Some(RemoveImageOptions { force, noprune: false }), None)
+      .remove_image(
+        id,
+        Some(RemoveImageOptions {
+          force,
+          noprune: false,
+        }),
+        None,
+      )
       .await?;
     Ok(())
   }
@@ -123,9 +130,9 @@ impl DockerClient {
     };
 
     let options = CreateImageOptions {
-      from_image: repo,
-      tag,
-      platform: platform.unwrap_or_default(),
+      from_image: Some(repo.to_string()),
+      tag: Some(tag.to_string()),
+      platform: platform.map(String::from).unwrap_or_default(),
       ..Default::default()
     };
 

@@ -39,7 +39,7 @@ pub struct EditMachineDialog {
 }
 
 impl EditMachineDialog {
-  pub fn new(machine: &ColimaVm, cx: &mut Context<Self>) -> Self {
+  pub fn new(machine: &ColimaVm, cx: &mut Context<'_, Self>) -> Self {
     let focus_handle = cx.focus_handle();
 
     Self {
@@ -64,7 +64,7 @@ impl EditMachineDialog {
     &self.machine_name
   }
 
-  fn ensure_inputs(&mut self, machine: &ColimaVm, window: &mut Window, cx: &mut Context<Self>) {
+  fn ensure_inputs(&mut self, machine: &ColimaVm, window: &mut Window, cx: &mut Context<'_, Self>) {
     if self.cpus_input.is_none() {
       let cpus = machine.cpus.to_string();
       self.cpus_input = Some(cx.new(|cx| {
@@ -93,7 +93,7 @@ impl EditMachineDialog {
     }
   }
 
-  fn ensure_inputs_default(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+  fn ensure_inputs_default(&mut self, window: &mut Window, cx: &mut Context<'_, Self>) {
     if self.cpus_input.is_none() {
       let cpus = self.initial_cpus.clone();
       self.cpus_input = Some(cx.new(|cx| {
@@ -156,7 +156,7 @@ impl EditMachineDialog {
     &mut self,
     machine: &ColimaVm,
     window: &mut Window,
-    cx: &mut Context<Self>,
+    cx: &mut Context<'_, Self>,
   ) -> impl IntoElement {
     // Ensure inputs are created with machine values
     self.ensure_inputs(machine, window, cx);
@@ -442,7 +442,7 @@ impl Focusable for EditMachineDialog {
 }
 
 impl Render for EditMachineDialog {
-  fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+  fn render(&mut self, window: &mut Window, cx: &mut Context<'_, Self>) -> impl IntoElement {
     // Ensure inputs are created
     self.ensure_inputs_default(window, cx);
     let colors = cx.theme().colors;

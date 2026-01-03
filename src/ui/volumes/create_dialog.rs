@@ -77,7 +77,7 @@ pub struct CreateVolumeDialog {
 }
 
 impl CreateVolumeDialog {
-  pub fn new(cx: &mut Context<Self>) -> Self {
+  pub fn new(cx: &mut Context<'_, Self>) -> Self {
     let focus_handle = cx.focus_handle();
 
     Self {
@@ -90,7 +90,7 @@ impl CreateVolumeDialog {
     }
   }
 
-  fn ensure_inputs(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+  fn ensure_inputs(&mut self, window: &mut Window, cx: &mut Context<'_, Self>) {
     if self.name_input.is_none() {
       self.name_input = Some(cx.new(|cx| InputState::new(window, cx).placeholder("Volume name (required)")));
     }
@@ -138,7 +138,7 @@ impl Focusable for CreateVolumeDialog {
 }
 
 impl Render for CreateVolumeDialog {
-  fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+  fn render(&mut self, window: &mut Window, cx: &mut Context<'_, Self>) -> impl IntoElement {
     self.ensure_inputs(window, cx);
     let colors = cx.theme().colors;
 

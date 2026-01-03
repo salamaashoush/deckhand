@@ -1,5 +1,5 @@
 use anyhow::Result;
-use bollard::network::ListNetworksOptions;
+use bollard::query_parameters::ListNetworksOptions;
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
@@ -77,7 +77,7 @@ impl DockerClient {
   pub async fn list_networks(&self) -> Result<Vec<NetworkInfo>> {
     let docker = self.client()?;
 
-    let options = ListNetworksOptions::<String> { ..Default::default() };
+    let options = ListNetworksOptions { ..Default::default() };
 
     let networks = docker.list_networks(Some(options)).await?;
 
@@ -158,11 +158,11 @@ impl DockerClient {
       options: None,
     });
 
-    let config = bollard::network::CreateNetworkOptions {
+    let config = bollard::models::NetworkCreateRequest {
       name: name.to_string(),
-      driver: "bridge".to_string(),
-      enable_ipv6,
-      ipam: ipam.unwrap_or_default(),
+      driver: Some("bridge".to_string()),
+      enable_ipv6: Some(enable_ipv6),
+      ipam,
       ..Default::default()
     };
 

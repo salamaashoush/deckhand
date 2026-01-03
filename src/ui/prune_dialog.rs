@@ -67,7 +67,7 @@ pub struct PruneDialog {
 }
 
 impl PruneDialog {
-  pub fn new(cx: &mut Context<Self>) -> Self {
+  pub fn new(cx: &mut Context<'_, Self>) -> Self {
     let focus_handle = cx.focus_handle();
 
     Self {
@@ -113,7 +113,7 @@ impl Focusable for PruneDialog {
 }
 
 impl Render for PruneDialog {
-  fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+  fn render(&mut self, _window: &mut Window, cx: &mut Context<'_, Self>) -> impl IntoElement {
     let colors = cx.theme().colors;
     let containers_checked = self.options.prune_containers;
     let images_checked = self.options.prune_images;

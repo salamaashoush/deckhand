@@ -46,7 +46,7 @@ pub struct SetupDialog {
 }
 
 impl SetupDialog {
-  pub fn new(cx: &mut Context<Self>) -> Self {
+  pub fn new(cx: &mut Context<'_, Self>) -> Self {
     let focus_handle = cx.focus_handle();
 
     Self {
@@ -57,7 +57,7 @@ impl SetupDialog {
     }
   }
 
-  pub fn refresh_status(&mut self, _cx: &mut Context<Self>) {
+  pub fn refresh_status(&mut self, _cx: &mut Context<'_, Self>) {
     self.colima_installed = is_colima_installed();
     self.docker_installed = is_docker_installed();
     self.homebrew_installed = is_homebrew_installed();
@@ -67,7 +67,7 @@ impl SetupDialog {
     self.colima_installed && self.docker_installed
   }
 
-  fn render_status_item(&self, name: &'static str, installed: bool, cx: &Context<Self>) -> impl IntoElement {
+  fn render_status_item(&self, name: &'static str, installed: bool, cx: &Context<'_, Self>) -> impl IntoElement {
     let colors = &cx.theme().colors;
 
     h_flex()
@@ -114,7 +114,7 @@ impl SetupDialog {
     title: &'static str,
     command: &'static str,
     description: &'static str,
-    cx: &Context<Self>,
+    cx: &Context<'_, Self>,
   ) -> impl IntoElement {
     let colors = &cx.theme().colors;
     let cmd = command.to_string();
@@ -191,7 +191,7 @@ impl Focusable for SetupDialog {
 }
 
 impl Render for SetupDialog {
-  fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+  fn render(&mut self, _window: &mut Window, cx: &mut Context<'_, Self>) -> impl IntoElement {
     let colors = cx.theme().colors;
 
     v_flex()

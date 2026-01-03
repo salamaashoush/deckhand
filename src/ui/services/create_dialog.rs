@@ -114,7 +114,7 @@ pub struct CreateServiceDialog {
 }
 
 impl CreateServiceDialog {
-  pub fn new(cx: &mut Context<Self>) -> Self {
+  pub fn new(cx: &mut Context<'_, Self>) -> Self {
     let focus_handle = cx.focus_handle();
 
     Self {
@@ -135,7 +135,7 @@ impl CreateServiceDialog {
     }
   }
 
-  fn ensure_inputs(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+  fn ensure_inputs(&mut self, window: &mut Window, cx: &mut Context<'_, Self>) {
     if self.name_input.is_none() {
       self.name_input = Some(cx.new(|cx| InputState::new(window, cx).placeholder("e.g. my-service")));
     }
@@ -258,7 +258,7 @@ impl CreateServiceDialog {
       .child(content)
   }
 
-  fn render_general_tab(&self, colors: &DialogColors, _cx: &mut Context<Self>) -> impl IntoElement {
+  fn render_general_tab(&self, colors: &DialogColors, _cx: &mut Context<'_, Self>) -> impl IntoElement {
     let name_input = self.name_input.clone().unwrap();
     let namespace_input = self.namespace_input.clone().unwrap();
     let service_type_select = self.service_type_select.clone().unwrap();
@@ -279,7 +279,7 @@ impl CreateServiceDialog {
       ))
   }
 
-  fn render_ports_tab(&self, colors: &DialogColors, cx: &mut Context<Self>) -> impl IntoElement {
+  fn render_ports_tab(&self, colors: &DialogColors, cx: &mut Context<'_, Self>) -> impl IntoElement {
     let port_name_input = self.port_name_input.clone().unwrap();
     let port_input = self.port_input.clone().unwrap();
     let target_port_input = self.target_port_input.clone().unwrap();
@@ -453,7 +453,7 @@ impl CreateServiceDialog {
       }))
   }
 
-  fn render_selectors_tab(&self, colors: &DialogColors, cx: &mut Context<Self>) -> impl IntoElement {
+  fn render_selectors_tab(&self, colors: &DialogColors, cx: &mut Context<'_, Self>) -> impl IntoElement {
     let selector_key_input = self.selector_key_input.clone().unwrap();
     let selector_value_input = self.selector_value_input.clone().unwrap();
     let sidebar_color = colors.sidebar;
@@ -554,7 +554,7 @@ impl Focusable for CreateServiceDialog {
 }
 
 impl Render for CreateServiceDialog {
-  fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+  fn render(&mut self, window: &mut Window, cx: &mut Context<'_, Self>) -> impl IntoElement {
     self.ensure_inputs(window, cx);
 
     let theme_colors = cx.theme().colors;

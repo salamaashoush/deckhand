@@ -79,7 +79,7 @@ impl ListDelegate for PodListDelegate {
     &mut self,
     ix: IndexPath,
     _window: &mut Window,
-    cx: &mut Context<ListState<Self>>,
+    cx: &mut Context<'_, ListState<Self>>,
   ) -> Option<Self::Item> {
     let pods = self.filtered_pods(cx);
     let pod = pods.get(ix.row)?;
@@ -253,7 +253,7 @@ impl ListDelegate for PodListDelegate {
     Some(item)
   }
 
-  fn set_selected_index(&mut self, ix: Option<IndexPath>, _window: &mut Window, cx: &mut Context<ListState<Self>>) {
+  fn set_selected_index(&mut self, ix: Option<IndexPath>, _window: &mut Window, cx: &mut Context<'_, ListState<Self>>) {
     self.selected_index = ix;
     cx.notify();
   }
@@ -269,7 +269,7 @@ pub struct PodList {
 }
 
 impl PodList {
-  pub fn new(window: &mut Window, cx: &mut Context<Self>) -> Self {
+  pub fn new(window: &mut Window, cx: &mut Context<'_, Self>) -> Self {
     let docker_state = docker_state(cx);
 
     let delegate = PodListDelegate {
@@ -313,14 +313,14 @@ impl PodList {
     }
   }
 
-  fn ensure_search_input(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+  fn ensure_search_input(&mut self, window: &mut Window, cx: &mut Context<'_, Self>) {
     if self.search_input.is_none() {
       let input_state = cx.new(|cx| InputState::new(window, cx).placeholder("Search pods..."));
       self.search_input = Some(input_state);
     }
   }
 
-  fn sync_search_query(&mut self, cx: &mut Context<Self>) {
+  fn sync_search_query(&mut self, cx: &mut Context<'_, Self>) {
     if let Some(input) = &self.search_input {
       let current_text = input.read(cx).text().to_string();
       if current_text != self.search_query {
@@ -333,7 +333,7 @@ impl PodList {
     }
   }
 
-  fn toggle_search(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+  fn toggle_search(&mut self, window: &mut Window, cx: &mut Context<'_, Self>) {
     self.search_visible = !self.search_visible;
     if self.search_visible {
       self.ensure_search_input(window, cx);
@@ -350,7 +350,7 @@ impl PodList {
   }
 
   /// Select a pod by name and namespace
-  pub fn select_pod(&mut self, name: &str, namespace: &str, cx: &mut Context<Self>) {
+  pub fn select_pod(&mut self, name: &str, namespace: &str, cx: &mut Context<'_, Self>) {
     self.list_state.update(cx, |state, cx| {
       let delegate = state.delegate();
       let pods = delegate.filtered_pods(cx);
@@ -363,7 +363,7 @@ impl PodList {
     cx.notify();
   }
 
-  fn render_empty(&self, cx: &mut Context<Self>) -> gpui::Div {
+  fn render_empty(&self, cx: &mut Context<'_, Self>) -> gpui::Div {
     let colors = &cx.theme().colors;
     let state = self.docker_state.read(cx);
 
@@ -400,7 +400,7 @@ impl PodList {
       .child(div().text_sm().text_color(colors.muted_foreground).child(subtitle))
   }
 
-  fn render_no_results(&self, cx: &mut Context<Self>) -> gpui::Div {
+  fn render_no_results(&self, cx: &mut Context<'_, Self>) -> gpui::Div {
     let colors = &cx.theme().colors;
 
     v_flex()
@@ -435,8 +435,8 @@ impl PodList {
       )
   }
 
-  fn render_namespace_selector(&self, cx: &mut Context<Self>) -> impl IntoElement {
-    let colors = cx.theme().colors;
+  fn render_namespace_selector(&self, cx: &mut Context<'_, Self>) -> impl IntoElement {
+    let _colors = cx.theme().colors;
     let state = self.docker_state.read(cx);
     let selected = state.selected_namespace.clone();
     let namespaces = state.namespaces.clone();
@@ -479,7 +479,7 @@ impl PodList {
 impl gpui::EventEmitter<PodListEvent> for PodList {}
 
 impl Render for PodList {
-  fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+  fn render(&mut self, window: &mut Window, cx: &mut Context<'_, Self>) -> impl IntoElement {
     let state = self.docker_state.read(cx);
     let total_count = state.pods.len();
     let running_count = state

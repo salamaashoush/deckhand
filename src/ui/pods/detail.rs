@@ -1,8 +1,9 @@
 use gpui::{App, Entity, Styled, Window, div, prelude::*, px};
 use gpui_component::{
-  Icon, IconName, Selectable, Sizable,
+  Icon, Selectable, Sizable,
   button::{Button, ButtonVariants},
   h_flex,
+  input::{Input, InputState},
   scroll::ScrollableElement,
   tab::{Tab, TabBar},
   theme::ActiveTheme,
@@ -42,6 +43,9 @@ pub struct PodDetail {
   active_tab: usize,
   pod_state: Option<PodTabState>,
   terminal_view: Option<Entity<TerminalView>>,
+  logs_editor: Option<Entity<InputState>>,
+  describe_editor: Option<Entity<InputState>>,
+  yaml_editor: Option<Entity<InputState>>,
   on_delete: Option<PodActionCallback>,
   on_tab_change: Option<TabChangeCallback>,
   on_refresh_logs: Option<RefreshCallback>,
@@ -55,6 +59,9 @@ impl PodDetail {
       active_tab: 0,
       pod_state: None,
       terminal_view: None,
+      logs_editor: None,
+      describe_editor: None,
+      yaml_editor: None,
       on_delete: None,
       on_tab_change: None,
       on_refresh_logs: None,
@@ -79,6 +86,21 @@ impl PodDetail {
 
   pub fn terminal_view(mut self, view: Option<Entity<TerminalView>>) -> Self {
     self.terminal_view = view;
+    self
+  }
+
+  pub fn logs_editor(mut self, editor: Option<Entity<InputState>>) -> Self {
+    self.logs_editor = editor;
+    self
+  }
+
+  pub fn describe_editor(mut self, editor: Option<Entity<InputState>>) -> Self {
+    self.describe_editor = editor;
+    self
+  }
+
+  pub fn yaml_editor(mut self, editor: Option<Entity<InputState>>) -> Self {
+    self.yaml_editor = editor;
     self
   }
 
@@ -318,66 +340,44 @@ impl PodDetail {
             }))
   }
 
-  fn render_logs_tab(&self, pod: &PodInfo, cx: &App) -> gpui::Div {
+  fn render_logs_tab(&self, _pod: &PodInfo, cx: &App) -> gpui::Div {
     let colors = &cx.theme().colors;
     let state = self.pod_state.as_ref();
     let is_loading = state.map(|s| s.logs_loading).unwrap_or(false);
+
+    if is_loading {
+      return v_flex()
+        .size_full()
+        .p(px(16.))
+        .child(
+          div()
+            .text_sm()
+            .text_color(colors.muted_foreground)
+            .child("Loading logs..."),
+        );
+    }
+
+    if let Some(ref editor) = self.logs_editor {
+      return div()
+        .size_full()
+        .child(Input::new(editor).size_full().appearance(false).disabled(true));
+    }
+
+    // Fallback to plain text
     let logs_content = state
       .map(|s| s.logs.clone())
       .unwrap_or_else(|| "No logs available".to_string());
-
-    let on_refresh = self.on_refresh_logs.clone();
-    let container_selector = self.render_container_selector(pod, cx);
-
-    v_flex()
-      .w_full()
-      .h_full()
-      .p(px(16.))
-      .gap(px(12.))
-      .child(
-        h_flex()
-          .w_full()
-          .justify_between()
-          .items_center()
-          .child(
-            h_flex()
-              .gap(px(16.))
-              .items_center()
-              .child(
-                div()
-                  .text_sm()
-                  .font_weight(gpui::FontWeight::MEDIUM)
-                  .text_color(colors.foreground)
-                  .child("Pod Logs"),
-              )
-              .children(container_selector),
-          )
-          .child(
-            Button::new("refresh-logs")
-              .icon(IconName::Redo)
-              .ghost()
-              .small()
-              .on_click(move |_ev, window, cx| {
-                if let Some(ref cb) = on_refresh {
-                  cb(&(), window, cx);
-                }
-              }),
-          ),
-      )
-      .child(
-        div()
-          .flex_1()
-          .w_full()
-          .bg(colors.sidebar)
-          .rounded(px(8.))
-          .p(px(12.))
-          .overflow_y_scrollbar()
-          .font_family("monospace")
-          .text_xs()
-          .text_color(colors.foreground)
-          .when(is_loading, |el| el.child("Loading logs..."))
-          .when(!is_loading, |el| el.child(logs_content)),
-      )
+    div().size_full().child(
+      div()
+        .size_full()
+        .overflow_y_scrollbar()
+        .bg(colors.sidebar)
+        .p(px(12.))
+        .font_family("monospace")
+        .text_xs()
+        .text_color(colors.foreground)
+        .child(logs_content),
+    )
   }
 
   fn render_terminal_tab(&self, pod: &PodInfo, cx: &App) -> gpui::Div {
@@ -436,72 +436,80 @@ impl PodDetail {
     let colors = &cx.theme().colors;
     let state = self.pod_state.as_ref();
     let is_loading = state.map(|s| s.describe_loading).unwrap_or(false);
+
+    if is_loading {
+      return v_flex()
+        .size_full()
+        .p(px(16.))
+        .child(
+          div()
+            .text_sm()
+            .text_color(colors.muted_foreground)
+            .child("Loading..."),
+        );
+    }
+
+    if let Some(ref editor) = self.describe_editor {
+      return div()
+        .size_full()
+        .child(Input::new(editor).size_full().appearance(false).disabled(true));
+    }
+
+    // Fallback to plain text
     let describe_content = state
       .map(|s| s.describe.clone())
       .unwrap_or_else(|| "Loading...".to_string());
-
-    v_flex()
-      .w_full()
-      .h_full()
-      .p(px(16.))
-      .gap(px(12.))
-      .child(
-        div()
-          .text_sm()
-          .font_weight(gpui::FontWeight::MEDIUM)
-          .text_color(colors.foreground)
-          .child("Pod Description"),
-      )
-      .child(
-        div()
-          .flex_1()
-          .w_full()
-          .bg(colors.sidebar)
-          .rounded(px(8.))
-          .p(px(12.))
-          .overflow_y_scrollbar()
-          .font_family("monospace")
-          .text_xs()
-          .text_color(colors.foreground)
-          .when(is_loading, |el| el.child("Loading..."))
-          .when(!is_loading, |el| el.child(describe_content)),
-      )
+    div().size_full().child(
+      div()
+        .size_full()
+        .overflow_y_scrollbar()
+        .bg(colors.sidebar)
+        .p(px(12.))
+        .font_family("monospace")
+        .text_xs()
+        .text_color(colors.foreground)
+        .child(describe_content),
+    )
   }
 
   fn render_yaml_tab(&self, cx: &App) -> gpui::Div {
     let colors = &cx.theme().colors;
     let state = self.pod_state.as_ref();
     let is_loading = state.map(|s| s.yaml_loading).unwrap_or(false);
+
+    if is_loading {
+      return v_flex()
+        .size_full()
+        .p(px(16.))
+        .child(
+          div()
+            .text_sm()
+            .text_color(colors.muted_foreground)
+            .child("Loading..."),
+        );
+    }
+
+    if let Some(ref editor) = self.yaml_editor {
+      return div()
+        .size_full()
+        .child(Input::new(editor).size_full().appearance(false).disabled(true));
+    }
+
+    // Fallback to plain text
     let yaml_content = state
       .map(|s| s.yaml.clone())
       .unwrap_or_else(|| "Loading...".to_string());
-
-    v_flex()
-      .w_full()
-      .h_full()
-      .p(px(16.))
-      .gap(px(12.))
-      .child(
-        div()
-          .text_sm()
-          .font_weight(gpui::FontWeight::MEDIUM)
-          .text_color(colors.foreground)
-          .child("Pod YAML"),
-      )
-      .child(
-        div()
-          .flex_1()
-          .w_full()
-          .bg(colors.sidebar)
-          .rounded(px(8.))
-          .p(px(12.))
-          .overflow_y_scrollbar()
-          .font_family("monospace")
-          .text_xs()
-          .text_color(colors.foreground)
-          .when(is_loading, |el| el.child("Loading..."))
-          .when(!is_loading, |el| el.child(yaml_content)),
-      )
+    div().size_full().child(
+      div()
+        .size_full()
+        .overflow_y_scrollbar()
+        .bg(colors.sidebar)
+        .p(px(12.))
+        .font_family("monospace")
+        .text_xs()
+        .text_color(colors.foreground)
+        .child(yaml_content),
+    )
   }
 
   pub fn render(&self, _window: &mut Window, cx: &App) -> gpui::AnyElement {
@@ -526,6 +534,7 @@ impl PodDetail {
       .py(px(8.))
       .gap(px(12.))
       .items_center()
+      .flex_shrink_0()
       .border_b_1()
       .border_color(colors.border)
       .child(
@@ -571,7 +580,7 @@ impl PodDetail {
     // Terminal tab needs full height without scroll
     let is_terminal_tab = self.active_tab == 2;
 
-    let mut result = div().size_full().bg(colors.sidebar).flex().flex_col().child(toolbar);
+    let mut result = div().size_full().overflow_hidden().bg(colors.sidebar).flex().flex_col().child(toolbar);
 
     if is_terminal_tab {
       result = result.child(div().flex_1().min_h_0().w_full().child(content));
@@ -580,6 +589,9 @@ impl PodDetail {
         div()
           .id("pod-detail-scroll")
           .flex_1()
+          .min_h_0()
+          .w_full()
+          .overflow_hidden()
           .overflow_y_scrollbar()
           .child(content)
           .child(div().h(px(100.))),
