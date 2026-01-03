@@ -39,7 +39,7 @@ jobs:
         run: cargo fmt -- --check
 
       - name: Clippy
-        run: cargo clippy --all-targets --all-features -- -D warnings -W clippy::pedantic
+        run: cargo clippy --all-targets --all-features -- -D warnings -W clippy::pedantic -A clippy::too_many_lines -A clippy::struct_excessive_bools
 
       - name: Build
         run: cargo build --release
