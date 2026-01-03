@@ -1,4 +1,4 @@
-# Deckhand - Docker & Kubernetes Desktop Manager
+# Dockside - Docker & Kubernetes Desktop Manager
 # justfile for development, building, and releasing
 
 set shell := ["bash", "-cu"]
@@ -129,21 +129,21 @@ icon-placeholder:
 
 # Create macOS app bundle
 bundle: build-release
-    @echo "Creating Deckhand.app bundle..."
-    @mkdir -p target/release/Deckhand.app/Contents/MacOS
-    @mkdir -p target/release/Deckhand.app/Contents/Resources
-    @cp target/release/deckhand target/release/Deckhand.app/Contents/MacOS/
-    @cp assets/Info.plist target/release/Deckhand.app/Contents/
-    @cp assets/AppIcon.icns target/release/Deckhand.app/Contents/Resources/ 2>/dev/null || echo "No icon found - run 'just icon-placeholder' first"
-    @cp -R themes target/release/Deckhand.app/Contents/Resources/
-    @echo "Bundle created at target/release/Deckhand.app"
+    @echo "Creating Dockside.app bundle..."
+    @mkdir -p target/release/Dockside.app/Contents/MacOS
+    @mkdir -p target/release/Dockside.app/Contents/Resources
+    @cp target/release/dockside target/release/Dockside.app/Contents/MacOS/
+    @cp assets/Info.plist target/release/Dockside.app/Contents/
+    @cp assets/AppIcon.icns target/release/Dockside.app/Contents/Resources/ 2>/dev/null || echo "No icon found - run 'just icon-placeholder' first"
+    @cp -R themes target/release/Dockside.app/Contents/Resources/
+    @echo "Bundle created at target/release/Dockside.app"
 
 # Install app to /Applications
 install-app: bundle
-    @echo "Installing Deckhand.app to /Applications..."
-    @rm -rf /Applications/Deckhand.app
-    @cp -R target/release/Deckhand.app /Applications/
-    @echo "Deckhand.app installed to /Applications"
+    @echo "Installing Dockside.app to /Applications..."
+    @rm -rf /Applications/Dockside.app
+    @cp -R target/release/Dockside.app /Applications/
+    @echo "Dockside.app installed to /Applications"
 
 # ==================== Cross Compilation ====================
 
@@ -242,7 +242,7 @@ install:
 
 # Uninstall the binary
 uninstall:
-    cargo uninstall deckhand
+    cargo uninstall dockside
 
 # Install dependencies (Docker, Colima) on macOS
 install-deps:

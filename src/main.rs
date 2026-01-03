@@ -31,7 +31,7 @@ pub use assets::Assets;
 fn get_themes_dir() -> Option<PathBuf> {
   // Try to find themes relative to executable (for .app bundle)
   if let Ok(exe_path) = std::env::current_exe() {
-    // In a .app bundle: Contents/MacOS/deckhand -> Contents/Resources/themes
+    // In a .app bundle: Contents/MacOS/dockside -> Contents/Resources/themes
     if let Some(macos_dir) = exe_path.parent() {
       let resources_themes = macos_dir
                 .parent() // Contents
@@ -92,7 +92,7 @@ fn main() {
       WindowOptions {
         window_bounds: Some(WindowBounds::Windowed(bounds)),
         titlebar: Some(TitlebarOptions {
-          title: Some("Deckhand".into()),
+          title: Some("Dockside".into()),
           appears_transparent: true,
           traffic_light_position: Some(gpui::point(px(9.), px(9.))),
         }),

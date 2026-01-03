@@ -170,12 +170,12 @@ impl ListDelegate for MachineListDelegate {
                 if running {
                   menu = menu
                     .item(
-                      PopupMenuItem::new("Use Docker Context")
-                        .icon(IconName::Check)
+                      PopupMenuItem::new("Set as Default")
+                        .icon(IconName::CircleCheck)
                         .on_click({
                           let n = n.clone();
                           move |_, _, cx| {
-                            services::set_docker_context(n.clone(), cx);
+                            services::set_default_machine(n.clone(), has_k8s, cx);
                           }
                         }),
                     )

@@ -1,13 +1,13 @@
 [package]
-name = "deckhand"
+name = "dockside"
 version = "0.1.0"
 edition = "2024"
 rust-version = "1.91"
 description = "A native desktop application for managing Docker containers, images, volumes, networks, and Kubernetes resources via Colima"
 license = "MIT"
-repository = "https://github.com/salamaashoush/deckhand"
-homepage = "https://github.com/salamaashoush/deckhand"
-documentation = "https://github.com/salamaashoush/deckhand#readme"
+repository = "https://github.com/salamaashoush/dockside"
+homepage = "https://github.com/salamaashoush/dockside"
+documentation = "https://github.com/salamaashoush/dockside#readme"
 readme = "README.md"
 keywords = ["docker", "kubernetes", "colima", "containers", "devtools"]
 categories = ["development-tools", "command-line-utilities", "gui"]
@@ -15,7 +15,7 @@ authors = ["salamaashoush"]
 exclude = [".github/", "scripts/", "*.md", "justfile", ".gitignore"]
 
 [[bin]]
-name = "deckhand"
+name = "dockside"
 path = "src/main.rs"
 
 [dependencies]
@@ -45,6 +45,7 @@ vte = "0.15"
 rust-embed = "8"
 kube = { version = "2", features = ["client", "runtime"] }
 k8s-openapi = { version = "0.26", features = ["v1_32"] }
+which = "7"
 
 [dev-dependencies]
 criterion = "0.8"

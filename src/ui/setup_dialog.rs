@@ -10,31 +10,70 @@ use gpui_component::{
 };
 use std::process::Command;
 
+/// Common paths for Homebrew binaries on macOS
+const BREW_PATHS: &[&str] = &[
+  "/opt/homebrew/bin", // Apple Silicon
+  "/usr/local/bin",    // Intel
+];
+
+/// Find a command in PATH or common locations
+fn find_command(name: &str) -> Option<std::path::PathBuf> {
+  // First check if it's in PATH
+  if let Ok(path) = which::which(name) {
+    return Some(path);
+  }
+
+  // Check common Homebrew locations
+  for base in BREW_PATHS {
+    let path = std::path::Path::new(base).join(name);
+    if path.exists() {
+      return Some(path);
+    }
+  }
+
+  None
+}
+
 /// Check if Colima CLI is installed
 pub fn is_colima_installed() -> bool {
-  Command::new("colima")
-    .arg("version")
-    .output()
-    .map(|o| o.status.success())
-    .unwrap_or(false)
+  if let Some(path) = find_command("colima") {
+    Command::new(path)
+      .arg("version")
+      .output()
+      .map(|o| o.status.success())
+      .unwrap_or(false)
+  } else {
+    false
+  }
 }
 
 /// Check if Docker CLI is installed
 pub fn is_docker_installed() -> bool {
-  Command::new("docker")
-    .arg("--version")
-    .output()
-    .map(|o| o.status.success())
-    .unwrap_or(false)
+  if let Some(path) = find_command("docker") {
+    Command::new(path)
+      .arg("--version")
+      .output()
+      .map(|o| o.status.success())
+      .unwrap_or(false)
+  } else {
+    false
+  }
 }
 
 /// Check if Homebrew is installed
 pub fn is_homebrew_installed() -> bool {
-  Command::new("brew")
-    .arg("--version")
-    .output()
-    .map(|o| o.status.success())
-    .unwrap_or(false)
+  // Check common Homebrew locations directly
+  for base in BREW_PATHS {
+    let brew_path = std::path::Path::new(base).join("brew");
+    if brew_path.exists() {
+      return Command::new(brew_path)
+        .arg("--version")
+        .output()
+        .map(|o| o.status.success())
+        .unwrap_or(false);
+    }
+  }
+  false
 }
 
 /// Setup dialog shown when Docker/Colima are not detected

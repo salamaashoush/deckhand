@@ -171,25 +171,29 @@ impl DeploymentsView {
 impl Render for DeploymentsView {
   fn render(&mut self, _window: &mut Window, cx: &mut Context<'_, Self>) -> impl IntoElement {
     let colors = cx.theme().colors;
+    let has_selection = self.selected_deployment.is_some();
 
     div()
       .size_full()
       .flex()
       .overflow_hidden()
       .child(
-        // Left: Deployment list - fixed width with border
+        // Left: Deployment list - fixed width when selected, full width when not
         div()
-          .w(px(320.))
+          .when(has_selection, |el| {
+            el.w(px(320.)).border_r_1().border_color(colors.border)
+          })
+          .when(!has_selection, gpui::Styled::flex_1)
           .h_full()
           .flex_shrink_0()
           .overflow_hidden()
-          .border_r_1()
-          .border_color(colors.border)
           .child(self.list.clone()),
       )
-      .child(
-        // Right: Detail panel - flexible width
-        div().flex_1().h_full().overflow_hidden().child(self.detail.clone()),
-      )
+      .when(has_selection, |el| {
+        el.child(
+          // Right: Detail panel - only shown when selection exists
+          div().flex_1().h_full().overflow_hidden().child(self.detail.clone()),
+        )
+      })
   }
 }

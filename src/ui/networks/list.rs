@@ -317,7 +317,7 @@ impl NetworkList {
 
     v_flex()
       .flex_1()
-      .flex()
+      .w_full()
       .items_center()
       .justify_center()
       .gap(px(16.))
@@ -330,7 +330,11 @@ impl NetworkList {
           .flex()
           .items_center()
           .justify_center()
-          .child(Icon::new(IconName::Globe).text_color(colors.muted_foreground)),
+          .child(
+            Icon::new(IconName::Globe)
+              .size(px(32.))
+              .text_color(colors.muted_foreground),
+          ),
       )
       .child(
         div()
@@ -340,10 +344,45 @@ impl NetworkList {
           .child("No Networks"),
       )
       .child(
-        div()
-          .text_sm()
-          .text_color(colors.muted_foreground)
-          .child("Create a network to get started"),
+        v_flex()
+          .w_full()
+          .items_center()
+          .gap(px(8.))
+          .mt(px(24.))
+          .child(
+            div()
+              .text_sm()
+              .font_weight(gpui::FontWeight::MEDIUM)
+              .text_color(colors.secondary_foreground)
+              .child("Get started with an example"),
+          )
+          .child(
+            h_flex()
+              .items_center()
+              .gap(px(4.))
+              .child(
+                div()
+                  .px(px(12.))
+                  .py(px(8.))
+                  .rounded(px(6.))
+                  .bg(colors.sidebar)
+                  .font_family("monospace")
+                  .text_sm()
+                  .text_color(colors.muted_foreground)
+                  .child("docker network create mynetwork"),
+              )
+              .child(
+                Button::new("copy-example")
+                  .icon(IconName::Copy)
+                  .ghost()
+                  .xsmall()
+                  .on_click(|_ev, _window, cx| {
+                    cx.write_to_clipboard(gpui::ClipboardItem::new_string(
+                      "docker network create mynetwork".to_string(),
+                    ));
+                  }),
+              ),
+          ),
       )
   }
 

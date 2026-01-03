@@ -146,28 +146,33 @@ impl Render for NetworksView {
         cx.notify();
       }));
 
+    let has_selection = self.selected_network.is_some();
+
     div()
       .size_full()
       .flex()
       .overflow_hidden()
       .child(
-        // Left: Network list - fixed width with border
+        // Left: Network list - fixed width when selected, full width when not
         div()
-          .w(px(320.))
+          .when(has_selection, |el| {
+            el.w(px(320.)).border_r_1().border_color(colors.border)
+          })
+          .when(!has_selection, gpui::Styled::flex_1)
           .h_full()
           .flex_shrink_0()
           .overflow_hidden()
-          .border_r_1()
-          .border_color(colors.border)
           .child(self.network_list.clone()),
       )
-      .child(
-        // Right: Detail panel - flexible width
-        div()
-          .flex_1()
-          .h_full()
-          .overflow_hidden()
-          .child(detail.render(window, cx)),
-      )
+      .when(has_selection, |el| {
+        el.child(
+          // Right: Detail panel - only shown when selection exists
+          div()
+            .flex_1()
+            .h_full()
+            .overflow_hidden()
+            .child(detail.render(window, cx)),
+        )
+      })
   }
 }

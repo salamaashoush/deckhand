@@ -10,7 +10,7 @@ env:
 
 jobs:
   build:
-    name: Build
+    name: Build macOS App
     runs-on: macos-latest
     steps:
       - uses: actions/checkout@v4
@@ -36,31 +36,6 @@ jobs:
       - name: Build
         run: cargo build --release --target aarch64-apple-darwin
 
-      - name: Package
-        run: |
-          VERSION=${GITHUB_REF#refs/tags/}
-          tar -czvf deckhand-$VERSION-aarch64-apple-darwin.tar.gz \
-            -C target/aarch64-apple-darwin/release deckhand
-
-      - name: Upload artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: deckhand-aarch64-apple-darwin
-          path: deckhand-*.tar.gz
-
-  bundle:
-    name: Build macOS App Bundle
-    runs-on: macos-latest
-    needs: build
-    steps:
-      - uses: actions/checkout@v4
-
-      - name: Download binary
-        uses: actions/download-artifact@v4
-        with:
-          name: deckhand-aarch64-apple-darwin
-          path: artifacts
-
       - name: Generate icon if missing
         run: |
           if [[ ! -f "assets/AppIcon.icns" ]]; then
@@ -72,42 +47,39 @@ jobs:
         run: |
           VERSION=${GITHUB_REF#refs/tags/}
 
-          # Extract binary
-          tar -xzf artifacts/deckhand-*.tar.gz
-
           # Create bundle structure
-          mkdir -p Deckhand.app/Contents/MacOS
-          mkdir -p Deckhand.app/Contents/Resources
+          mkdir -p Dockside.app/Contents/MacOS
+          mkdir -p Dockside.app/Contents/Resources
 
-          # Copy files
-          cp deckhand Deckhand.app/Contents/MacOS/
-          cp assets/Info.plist Deckhand.app/Contents/
+          # Copy binary
+          cp target/aarch64-apple-darwin/release/dockside Dockside.app/Contents/MacOS/
 
-          # Update version in Info.plist
+          # Copy Info.plist and update version
+          cp assets/Info.plist Dockside.app/Contents/
           VERSION_NUM=${VERSION#v}
-          sed -i '' "s/0.1.0/$VERSION_NUM/g" Deckhand.app/Contents/Info.plist
+          sed -i '' "s/0.1.0/$VERSION_NUM/g" Dockside.app/Contents/Info.plist
 
           # Copy icon if exists
           if [[ -f "assets/AppIcon.icns" ]]; then
-            cp assets/AppIcon.icns Deckhand.app/Contents/Resources/
+            cp assets/AppIcon.icns Dockside.app/Contents/Resources/
           fi
 
           # Copy themes
-          cp -R themes Deckhand.app/Contents/Resources/
+          cp -R themes Dockside.app/Contents/Resources/
 
           # Package
-          zip -r Deckhand-$VERSION.app.zip Deckhand.app
+          zip -r Dockside-$VERSION-macos-arm64.zip Dockside.app
 
       - name: Upload app bundle
         uses: actions/upload-artifact@v4
         with:
-          name: Deckhand-app
-          path: Deckhand-*.app.zip
+          name: Dockside-app
+          path: Dockside-*.zip
 
   release:
     name: Create Release
     runs-on: ubuntu-latest
-    needs: [build, bundle]
+    needs: build
     permissions:
       contents: write
     steps:
@@ -115,16 +87,14 @@ jobs:
         with:
           fetch-depth: 0
 
-      - name: Download all artifacts
+      - name: Download artifacts
         uses: actions/download-artifact@v4
         with:
           path: artifacts
 
       - name: Generate changelog
-        id: changelog
         run: |
           VERSION=${GITHUB_REF#refs/tags/}
-          echo "version=$VERSION" >> $GITHUB_OUTPUT
 
           # Generate simple changelog from git log
           CHANGELOG=$(git log --pretty=format:"- %s" $(git describe --tags --abbrev=0 HEAD^ 2>/dev/null || echo "")..HEAD 2>/dev/null || git log --pretty=format:"- %s" -20)
@@ -140,8 +110,6 @@ jobs:
         uses: softprops/action-gh-release@v2
         with:
           body_path: changelog.md
-          files: |
-            artifacts/**/*.tar.gz
-            artifacts/**/*.zip
+          files: artifacts/**/*.zip
           draft: false
           prerelease: ${{ contains(github.ref, 'alpha') || contains(github.ref, 'beta') || contains(github.ref, 'rc') }}

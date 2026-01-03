@@ -76,7 +76,7 @@ cat >> "$NOTES_FILE" << 'EOF'
 ### Quick Install (macOS)
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/salamaashoush/deckhand/main/install.sh | bash
+curl -fsSL https://raw.githubusercontent.com/salamaashoush/dockside/main/install.sh | bash
 ```
 
 ### Manual Installation
@@ -85,16 +85,13 @@ Download the appropriate binary for your platform:
 
 | Platform | File |
 |----------|------|
-| macOS (Apple Silicon) | `deckhand-vX.X.X-aarch64-apple-darwin.tar.gz` |
-| macOS (Intel) | `deckhand-vX.X.X-x86_64-apple-darwin.tar.gz` |
-| macOS (Universal) | `deckhand-vX.X.X-universal-apple-darwin.tar.gz` |
-| macOS App Bundle | `Deckhand-vX.X.X.app.zip` |
+| macOS (Apple Silicon) | `Dockside-vX.X.X-macos-arm64.zip` |
 
 ### Build from Source
 
 ```bash
-git clone https://github.com/sashoush/deckhand
-cd deckhand
+git clone https://github.com/salamaashoush/dockside
+cd dockside
 cargo build --release
 ```
 EOF
@@ -120,9 +117,9 @@ fi
 echo "Creating release..."
 
 gh release create "$TAG" \
-    --title "Deckhand $TAG" \
+    --title "Dockside $TAG" \
     --notes-file "$NOTES_FILE" \
     "$DIST_DIR"/*
 
 echo ""
-echo "Release created: https://github.com/salamaashoush/deckhand/releases/tag/$TAG"
+echo "Release created: https://github.com/salamaashoush/dockside/releases/tag/$TAG"

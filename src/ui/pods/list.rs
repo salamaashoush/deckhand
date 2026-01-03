@@ -305,7 +305,10 @@ impl PodList {
 
     // Subscribe to docker state changes to refresh list
     cx.subscribe(&docker_state, |this, _state, event: &StateChanged, cx| {
-      if matches!(event, StateChanged::PodsUpdated | StateChanged::NamespacesUpdated) {
+      if matches!(
+        event,
+        StateChanged::PodsUpdated | StateChanged::NamespacesUpdated | StateChanged::MachinesUpdated
+      ) {
         this.list_state.update(cx, |_state, cx| {
           cx.notify();
         });
@@ -377,15 +380,22 @@ impl PodList {
     let colors = &cx.theme().colors;
     let state = self.docker_state.read(cx);
 
-    let (title, subtitle) = if state.k8s_available {
-      ("No Pods", "Deploy an application to see pods here")
+    // Check if there's a running VM without K8s that we can enable K8s on
+    let running_vm_without_k8s = state
+      .colima_vms
+      .iter()
+      .find(|vm| vm.status.is_running() && !vm.kubernetes)
+      .map(|vm| vm.name.clone());
+
+    let (title, show_example) = if state.k8s_available {
+      ("No Pods", true)
     } else {
-      ("Kubernetes Unavailable", "Start a Colima VM with Kubernetes enabled")
+      ("Kubernetes Unavailable", false)
     };
 
     v_flex()
       .flex_1()
-      .flex()
+      .w_full()
       .items_center()
       .justify_center()
       .gap(px(16.))
@@ -398,7 +408,11 @@ impl PodList {
           .flex()
           .items_center()
           .justify_center()
-          .child(Icon::new(AppIcon::Container).text_color(colors.muted_foreground)),
+          .child(
+            Icon::new(AppIcon::Pod)
+              .size(px(32.))
+              .text_color(colors.muted_foreground),
+          ),
       )
       .child(
         div()
@@ -407,7 +421,76 @@ impl PodList {
           .text_color(colors.secondary_foreground)
           .child(title),
       )
-      .child(div().text_sm().text_color(colors.muted_foreground).child(subtitle))
+      .when(show_example, |el| {
+        el.child(
+          v_flex()
+            .w_full()
+            .items_center()
+            .gap(px(8.))
+            .mt(px(24.))
+            .child(
+              div()
+                .text_sm()
+                .font_weight(gpui::FontWeight::MEDIUM)
+                .text_color(colors.secondary_foreground)
+                .child("Get started with an example"),
+            )
+            .child(
+              h_flex()
+                .items_center()
+                .gap(px(4.))
+                .child(
+                  div()
+                    .px(px(12.))
+                    .py(px(8.))
+                    .rounded(px(6.))
+                    .bg(colors.sidebar)
+                    .font_family("monospace")
+                    .text_sm()
+                    .text_color(colors.muted_foreground)
+                    .child("kubectl run nginx --image=nginx"),
+                )
+                .child(
+                  Button::new("copy-example")
+                    .icon(IconName::Copy)
+                    .ghost()
+                    .xsmall()
+                    .on_click(|_ev, _window, cx| {
+                      cx.write_to_clipboard(gpui::ClipboardItem::new_string(
+                        "kubectl run nginx --image=nginx".to_string(),
+                      ));
+                    }),
+                ),
+            ),
+        )
+      })
+      .when(!show_example, |el| {
+        el.child(
+          v_flex()
+            .items_center()
+            .gap(px(12.))
+            .child(
+              div()
+                .text_sm()
+                .text_color(colors.muted_foreground)
+                .child(if running_vm_without_k8s.is_some() {
+                  "Kubernetes is not enabled on the current machine"
+                } else {
+                  "Start a Colima VM with Kubernetes enabled"
+                }),
+            )
+            .when_some(running_vm_without_k8s, |el, vm_name| {
+              el.child(
+                Button::new("enable-k8s")
+                  .label(format!("Enable Kubernetes on '{vm_name}'"))
+                  .primary()
+                  .on_click(move |_ev, _window, cx| {
+                    services::enable_kubernetes(vm_name.clone(), cx);
+                  }),
+              )
+            }),
+        )
+      })
   }
 
   fn render_no_results(&self, cx: &mut Context<'_, Self>) -> gpui::Div {

@@ -4,7 +4,7 @@ use tokio::sync::RwLock;
 
 use crate::colima::{ColimaClient, ColimaStartOptions};
 use crate::docker::{ContainerCreateConfig, ContainerFlags, DockerClient};
-use crate::services::{Tokio, complete_task, fail_task, start_task};
+use crate::services::{TaskStage, Tokio, advance_stage, complete_task, fail_task, start_staged_task, start_task};
 use crate::state::{CurrentView, ImageInspectData, StateChanged, docker_state, settings_state};
 
 /// Shared Docker client - initialized once in `load_initial_data`
@@ -61,7 +61,22 @@ pub fn dispatcher(cx: &App) -> Entity<ActionDispatcher> {
 
 pub fn create_machine(options: ColimaStartOptions, cx: &mut App) {
   let machine_name = options.name.clone().unwrap_or_else(|| "default".to_string());
-  let task_id = start_task(cx, format!("Creating '{machine_name}'..."));
+  let has_kubernetes = options.kubernetes;
+
+  // Create staged task with clear progress stages
+  let mut stages = vec![
+    TaskStage::new("download", "Downloading VM image..."),
+    TaskStage::new("create", format!("Creating VM '{machine_name}'...")),
+    TaskStage::new("configure", "Configuring runtime..."),
+  ];
+
+  if has_kubernetes {
+    stages.push(TaskStage::new("kubernetes", "Setting up Kubernetes..."));
+  }
+
+  stages.push(TaskStage::new("verify", "Verifying machine..."));
+
+  let task_id = start_staged_task(cx, format!("Creating '{machine_name}'"), stages);
   let name_clone = machine_name.clone();
 
   let state = docker_state(cx);
@@ -196,56 +211,103 @@ pub fn stop_machine(name: String, cx: &mut App) {
 
 pub fn edit_machine(options: ColimaStartOptions, cx: &mut App) {
   let name = options.name.clone().unwrap_or_else(|| "default".to_string());
-  let task_id = start_task(cx, format!("Editing '{name}'..."));
+
+  // Create staged task with clear progress stages
+  let stages = vec![
+    TaskStage::new("stop", format!("Stopping '{name}'...")),
+    TaskStage::new("configure", "Applying new settings..."),
+    TaskStage::new("start", format!("Starting '{name}' with new configuration...")),
+    TaskStage::new("verify", format!("Verifying '{name}'...")),
+  ];
+
+  let task_id = start_staged_task(cx, format!("Updating '{name}'"), stages);
   let name_clone = name.clone();
 
   let state = docker_state(cx);
   let disp = dispatcher(cx);
 
-  // Set edit flag on options
-  let options = options.with_edit(true);
+  // Do NOT use --edit flag - it opens an interactive editor which hangs in subprocess
+  // Just pass the new configuration directly to colima start
 
   cx.spawn(async move |cx| {
-    let result = cx
+    // Stage 0: Stop the machine
+    let stop_result = cx
       .background_executor()
-      .spawn(async move {
-        let name_opt = if name == "default" { None } else { Some(name.as_str()) };
-
-        // Stop the machine first
-        if let Err(e) = ColimaClient::stop(name_opt) {
-          return Err(format!("Failed to stop machine: {e}"));
-        }
-
-        // Start with new options (edit mode)
-        match ColimaClient::start(&options) {
-          Ok(()) => Ok(ColimaClient::list().unwrap_or_default()),
-          Err(e) => Err(e.to_string()),
+      .spawn({
+        let name = name.clone();
+        async move {
+          let name_opt = if name == "default" { None } else { Some(name.as_str()) };
+          ColimaClient::stop(name_opt)
         }
       })
       .await;
 
-    cx.update(|cx| match result {
-      Ok(vms) => {
-        state.update(cx, |state, cx| {
-          state.set_machines(vms);
-          cx.emit(StateChanged::MachinesUpdated);
-        });
-        complete_task(cx, task_id);
-        disp.update(cx, |_, cx| {
-          cx.emit(DispatcherEvent::TaskCompleted {
-            message: format!("Machine '{name_clone}' updated and restarted"),
-          });
-        });
-      }
-      Err(e) => {
-        fail_task(cx, task_id, e.clone());
+    if let Err(e) = stop_result {
+      cx.update(|cx| {
+        fail_task(cx, task_id, format!("Failed to stop: {e}"));
         disp.update(cx, |_, cx| {
           cx.emit(DispatcherEvent::TaskFailed {
-            error: format!("Failed to edit '{name_clone}': {e}"),
+            error: format!("Failed to stop '{name_clone}': {e}"),
           });
         });
-      }
+      })
+      .ok();
+      return;
+    }
+
+    // Stage 1: Configuration applied (just advancing stage for UI feedback)
+    cx.update(|cx| advance_stage(cx, task_id)).ok();
+
+    // Brief pause to let Colima release resources
+    cx.background_executor()
+      .timer(std::time::Duration::from_millis(500))
+      .await;
+
+    // Stage 2: Start with new options
+    cx.update(|cx| advance_stage(cx, task_id)).ok();
+
+    let start_result = cx
+      .background_executor()
+      .spawn({
+        let options = options.clone();
+        async move { ColimaClient::start(&options) }
+      })
+      .await;
+
+    if let Err(e) = start_result {
+      cx.update(|cx| {
+        fail_task(cx, task_id, format!("Failed to start: {e}"));
+        disp.update(cx, |_, cx| {
+          cx.emit(DispatcherEvent::TaskFailed {
+            error: format!("Failed to start '{name_clone}' with new settings: {e}"),
+          });
+        });
+      })
+      .ok();
+      return;
+    }
+
+    // Stage 3: Verify and refresh list
+    cx.update(|cx| advance_stage(cx, task_id)).ok();
+
+    let vms = cx
+      .background_executor()
+      .spawn(async move { ColimaClient::list().unwrap_or_default() })
+      .await;
+
+    cx.update(|cx| {
+      state.update(cx, |state, cx| {
+        state.set_machines(vms);
+        cx.emit(StateChanged::MachinesUpdated);
+      });
+      complete_task(cx, task_id);
+      disp.update(cx, |_, cx| {
+        cx.emit(DispatcherEvent::TaskCompleted {
+          message: format!("Machine '{name_clone}' updated successfully"),
+        });
+      });
     })
+    .ok();
   })
   .detach();
 }
@@ -564,6 +626,112 @@ pub fn kubernetes_reset(name: String, cx: &mut App) {
         });
       }
     })
+  })
+  .detach();
+}
+
+/// Enable Kubernetes on a Colima machine by restarting it with --kubernetes flag
+/// This is for machines that were created without kubernetes support
+pub fn enable_kubernetes(name: String, cx: &mut App) {
+  // Create staged task with clear progress stages
+  let stages = vec![
+    TaskStage::new("stop", format!("Stopping '{name}'...")),
+    TaskStage::new("start", format!("Starting '{name}' with Kubernetes...")),
+    TaskStage::new("verify", format!("Verifying Kubernetes on '{name}'...")),
+  ];
+
+  let task_id = start_staged_task(cx, format!("Enabling K8s on '{name}'"), stages);
+  let name_clone = name.clone();
+
+  let state = docker_state(cx);
+  let disp = dispatcher(cx);
+
+  cx.spawn(async move |cx| {
+    // Stage 0: Stop the machine
+    let stop_result = cx
+      .background_executor()
+      .spawn({
+        let name = name.clone();
+        async move {
+          let name_opt = if name == "default" { None } else { Some(name.as_str()) };
+          ColimaClient::stop(name_opt)
+        }
+      })
+      .await;
+
+    if let Err(e) = stop_result {
+      cx.update(|cx| {
+        fail_task(cx, task_id, format!("Failed to stop: {e}"));
+        disp.update(cx, |_, cx| {
+          cx.emit(DispatcherEvent::TaskFailed {
+            error: format!("Failed to stop '{name_clone}': {e}"),
+          });
+        });
+      })
+      .ok();
+      return;
+    }
+
+    // Stage 1: Start with kubernetes
+    cx.update(|cx| advance_stage(cx, task_id)).ok();
+
+    // Brief pause to let Colima release resources
+    cx.background_executor()
+      .timer(std::time::Duration::from_millis(500))
+      .await;
+
+    let start_result = cx
+      .background_executor()
+      .spawn({
+        let name = name.clone();
+        async move {
+          // Start with kubernetes enabled, preserving the name
+          let options = ColimaStartOptions::new().with_name(name).with_kubernetes(true);
+          ColimaClient::start(&options)
+        }
+      })
+      .await;
+
+    if let Err(e) = start_result {
+      cx.update(|cx| {
+        fail_task(cx, task_id, format!("Failed to start with K8s: {e}"));
+        disp.update(cx, |_, cx| {
+          cx.emit(DispatcherEvent::TaskFailed {
+            error: format!("Failed to enable K8s on '{name_clone}': {e}"),
+          });
+        });
+      })
+      .ok();
+      return;
+    }
+
+    // Stage 2: Verify and refresh
+    cx.update(|cx| advance_stage(cx, task_id)).ok();
+
+    // Refresh machine list and pods
+    let vms = cx
+      .background_executor()
+      .spawn(async move { ColimaClient::list().unwrap_or_default() })
+      .await;
+
+    cx.update(|cx| {
+      state.update(cx, |state, cx| {
+        state.set_machines(vms);
+        cx.emit(StateChanged::MachinesUpdated);
+      });
+      complete_task(cx, task_id);
+      disp.update(cx, |_, cx| {
+        cx.emit(DispatcherEvent::TaskCompleted {
+          message: format!("Kubernetes enabled on '{name_clone}'"),
+        });
+      });
+      // Refresh K8s data
+      refresh_pods(cx);
+      refresh_namespaces(cx);
+      refresh_services(cx);
+      refresh_deployments(cx);
+    })
+    .ok();
   })
   .detach();
 }
@@ -1831,16 +1999,19 @@ pub fn set_view(view: CurrentView, cx: &mut App) {
   });
 }
 
-pub fn set_docker_context(name: String, cx: &mut App) {
-  let task_id = start_task(cx, format!("Switching to '{name}'..."));
+/// Set a machine as the default by switching docker and k8s contexts
+pub fn set_default_machine(name: String, has_kubernetes: bool, cx: &mut App) {
+  let task_id = start_task(cx, format!("Setting '{name}' as default..."));
 
   let disp = dispatcher(cx);
+  let state = docker_state(cx);
 
   cx.spawn(async move |cx| {
     let result = cx
       .background_executor()
       .spawn(async move {
         use std::process::Command;
+
         // Docker context name for colima is "colima" for default or "colima-<profile>" for others
         let context_name = if name == "default" {
           "colima".to_string()
@@ -1848,30 +2019,68 @@ pub fn set_docker_context(name: String, cx: &mut App) {
           format!("colima-{name}")
         };
 
-        let output = Command::new("docker").args(["context", "use", &context_name]).output();
+        // Switch docker context
+        let docker_output = Command::new("docker").args(["context", "use", &context_name]).output();
 
-        match output {
-          Ok(out) if out.status.success() => Ok(context_name),
-          Ok(out) => Err(String::from_utf8_lossy(&out.stderr).to_string()),
-          Err(e) => Err(e.to_string()),
+        match &docker_output {
+          Err(e) => return Err(format!("Failed to switch docker context: {e}")),
+          Ok(out) if !out.status.success() => {
+            return Err(format!(
+              "Failed to switch docker context: {}",
+              String::from_utf8_lossy(&out.stderr)
+            ));
+          }
+          Ok(_) => {}
         }
+
+        // If machine has kubernetes, switch kubectl context
+        if has_kubernetes {
+          // kubectl context for colima is "colima" for default or "colima-<profile>" for others
+          let kubectl_context = context_name.clone();
+
+          // k8s context switch is optional - don't fail if kubectl isn't available
+          let _ = Command::new("kubectl")
+            .args(["config", "use-context", &kubectl_context])
+            .output();
+        }
+
+        Ok((context_name, has_kubernetes))
       })
       .await;
 
     cx.update(|cx| match result {
-      Ok(context_name) => {
+      Ok((context_name, switched_k8s)) => {
         complete_task(cx, task_id);
+
+        let msg = if switched_k8s {
+          format!("'{context_name}' is now the default (Docker + Kubernetes)")
+        } else {
+          format!("'{context_name}' is now the default")
+        };
+
         disp.update(cx, |_, cx| {
-          cx.emit(DispatcherEvent::TaskCompleted {
-            message: format!("Docker context switched to '{context_name}'"),
-          });
+          cx.emit(DispatcherEvent::TaskCompleted { message: msg });
+        });
+
+        // Refresh data to reflect new context
+        refresh_containers(cx);
+        if switched_k8s {
+          refresh_pods(cx);
+          refresh_namespaces(cx);
+          refresh_services(cx);
+          refresh_deployments(cx);
+        }
+
+        // Notify that default machine changed
+        state.update(cx, |_, cx| {
+          cx.emit(StateChanged::MachinesUpdated);
         });
       }
       Err(e) => {
         fail_task(cx, task_id, e.clone());
         disp.update(cx, |_, cx| {
           cx.emit(DispatcherEvent::TaskFailed {
-            error: format!("Failed to switch context: {e}"),
+            error: format!("Failed to set default: {e}"),
           });
         });
       }
@@ -2334,10 +2543,14 @@ pub fn refresh_pods(cx: &mut App) {
   let ns_filter = if namespace == "all" { None } else { Some(namespace) };
 
   let tokio_task = Tokio::spawn(cx, async move {
+    // Check both client creation AND actual API connectivity
     match crate::kubernetes::KubeClient::new().await {
       Ok(client) => {
-        let pods = client.list_pods(ns_filter.as_deref()).await.unwrap_or_default();
-        (true, pods)
+        // Only set available=true if we can actually reach the K8s API
+        match client.list_pods(ns_filter.as_deref()).await {
+          Ok(pods) => (true, pods),
+          Err(_) => (false, vec![]),
+        }
       }
       Err(_) => (false, vec![]),
     }
@@ -2363,16 +2576,17 @@ pub fn refresh_namespaces(cx: &mut App) {
   let state = docker_state(cx);
 
   let tokio_task = Tokio::spawn(cx, async move {
+    // Check both client creation AND actual API connectivity
     match crate::kubernetes::KubeClient::new().await {
       Ok(client) => {
-        let namespaces = client
-          .list_namespaces()
-          .await
-          .unwrap_or_default()
-          .into_iter()
-          .map(|ns| ns.name)
-          .collect();
-        (true, namespaces)
+        // Only set available=true if we can actually reach the K8s API
+        match client.list_namespaces().await {
+          Ok(namespaces) => {
+            let ns_names = namespaces.into_iter().map(|ns| ns.name).collect();
+            (true, ns_names)
+          }
+          Err(_) => (false, vec!["default".to_string()]),
+        }
       }
       Err(_) => (false, vec!["default".to_string()]),
     }

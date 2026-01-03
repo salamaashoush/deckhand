@@ -90,6 +90,8 @@ impl ColimaClient {
     let cpus = u32::try_from(value["cpus"].as_u64().or_else(|| value["cpu"].as_u64()).unwrap_or(2)).unwrap_or(2);
     let memory = value["memory"].as_u64().unwrap_or(2 * 1024 * 1024 * 1024);
     let disk = value["disk"].as_u64().unwrap_or(60 * 1024 * 1024 * 1024);
+    // Use kubernetes field directly - note: colima list may have stale data
+    // For running VMs, we get accurate data from colima status
     let kubernetes = value["kubernetes"].as_bool().unwrap_or(false);
     let address = value["address"].as_str().map(ToString::to_string);
 
@@ -159,6 +161,7 @@ impl ColimaClient {
     let cpus = u32::try_from(value["cpu"].as_u64().or_else(|| value["cpus"].as_u64()).unwrap_or(2)).unwrap_or(2);
     let memory = value["memory"].as_u64().unwrap_or(2 * 1024 * 1024 * 1024);
     let disk = value["disk"].as_u64().unwrap_or(60 * 1024 * 1024 * 1024);
+    // Use kubernetes field directly from colima status --json (most reliable source)
     let kubernetes = value["kubernetes"].as_bool().unwrap_or(false);
 
     let docker_socket = value["docker_socket"].as_str().map(ToString::to_string);

@@ -23,7 +23,7 @@ fn create_tray_menu() -> Menu {
   let menu = Menu::new();
 
   // Show App
-  let show_app = MenuItem::with_id(menu_ids::SHOW_APP, "Open Deckhand", true, None);
+  let show_app = MenuItem::with_id(menu_ids::SHOW_APP, "Open Dockside", true, None);
   menu.append(&show_app).unwrap();
 
   menu.append(&PredefinedMenuItem::separator()).unwrap();
@@ -75,7 +75,7 @@ fn create_tray_menu() -> Menu {
   menu.append(&PredefinedMenuItem::separator()).unwrap();
 
   // Quit
-  let quit = MenuItem::with_id(menu_ids::QUIT, "Quit Deckhand", true, None);
+  let quit = MenuItem::with_id(menu_ids::QUIT, "Quit Dockside", true, None);
   menu.append(&quit).unwrap();
 
   menu
@@ -87,31 +87,20 @@ fn create_tray_menu() -> Menu {
 #[include = "icon.png"]
 struct TrayAssets;
 
-/// Load and resize the app icon for the tray (22x22 for macOS menu bar)
+/// Load and resize the app icon for the tray
+/// Uses 44x44 for retina display support on macOS menu bar
 fn load_tray_icon() -> tray_icon::Icon {
-  // Load icon.png from embedded assets and resize for menu bar
-  if let Some(icon_data) = TrayAssets::get("icon.png")
-    && let Ok(img) = image::load_from_memory(&icon_data.data)
-  {
-    // Resize to 22x22 for macOS menu bar (44x44 for retina would be better but 22 works)
-    let resized = image::imageops::resize(&img.into_rgba8(), 22, 22, image::imageops::FilterType::Lanczos3);
-    let (width, height) = resized.dimensions();
-    let rgba = resized.into_raw();
-    if let Ok(icon) = tray_icon::Icon::from_rgba(rgba, width, height) {
-      return icon;
-    }
-  }
+  // Load icon.png from embedded assets
+  let icon_data = TrayAssets::get("icon.png").expect("icon.png must be embedded in assets");
 
-  // Fallback: create a simple placeholder if icon loading fails
-  let size = 22u32;
-  let mut rgba = vec![0u8; (size * size * 4) as usize];
-  for i in (0..rgba.len()).step_by(4) {
-    rgba[i] = 100; // R
-    rgba[i + 1] = 100; // G
-    rgba[i + 2] = 100; // B
-    rgba[i + 3] = 255; // A
-  }
-  tray_icon::Icon::from_rgba(rgba, size, size).expect("Failed to create fallback icon")
+  let img = image::load_from_memory(&icon_data.data).expect("icon.png must be a valid image");
+
+  // Use 44x44 for retina display (22pt @ 2x)
+  let size = 44u32;
+  let resized = image::imageops::resize(&img.into_rgba8(), size, size, image::imageops::FilterType::Lanczos3);
+  let rgba = resized.into_raw();
+
+  tray_icon::Icon::from_rgba(rgba, size, size).expect("Failed to create tray icon from RGBA data")
 }
 
 /// The tray icon manager
@@ -127,7 +116,7 @@ impl AppTray {
 
     let tray_icon = TrayIconBuilder::new()
       .with_menu(Box::new(menu))
-      .with_tooltip("Deckhand - Docker Management")
+      .with_tooltip("Dockside - Docker Management")
       .with_icon(icon)
       .with_menu_on_left_click(true)
       .build()

@@ -1,4 +1,4 @@
-# typos configuration for Deckhand
+# typos configuration for Dockside
 # https://github.com/crate-ci/typos
 
 [files]
@@ -25,7 +25,7 @@ extend-ignore-identifiers-re = [
 # Technical terms that are correct
 pty = "pty"
 tty = "tty"
-deckhand = "deckhand"
+dockside = "dockside"
 colima = "colima"
 kubectl = "kubectl"
 

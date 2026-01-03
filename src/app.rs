@@ -6,6 +6,7 @@ use gpui_component::{
   notification::NotificationType,
   sidebar::{Sidebar, SidebarGroup, SidebarMenu, SidebarMenuItem},
   theme::{ActiveTheme, Theme, ThemeMode},
+  v_flex,
 };
 
 use crate::assets::AppIcon;
@@ -253,7 +254,7 @@ impl DockerApp {
                     SidebarMenu::new()
                         .child(
                             SidebarMenuItem::new("Pods")
-                                .icon(IconName::LayoutDashboard)
+                                .icon(Icon::new(AppIcon::Pod))
                                 .active(current_view == CurrentView::Pods)
                                 .on_click(cx.listener(|_this, _ev, _window, cx| {
                                     crate::services::set_view(CurrentView::Pods, cx);
@@ -261,7 +262,7 @@ impl DockerApp {
                         )
                         .child(
                             SidebarMenuItem::new("Deployments")
-                                .icon(IconName::GalleryVerticalEnd)
+                                .icon(Icon::new(AppIcon::Deployment))
                                 .active(current_view == CurrentView::Deployments)
                                 .on_click(cx.listener(|_this, _ev, _window, cx| {
                                     crate::services::set_view(CurrentView::Deployments, cx);
@@ -278,7 +279,7 @@ impl DockerApp {
                 ),
             )
             .child(
-                SidebarGroup::new("Linux").child(
+                SidebarGroup::new("Colima").child(
                     SidebarMenu::new().child(
                         SidebarMenuItem::new("Machines")
                             .icon(IconName::Frame)
@@ -350,18 +351,75 @@ impl DockerApp {
     Some(
       h_flex()
         .w_full()
-        .py(px(6.))
+        .py(px(8.))
         .px(px(16.))
-        .bg(colors.background)
-        .border_b_1()
+        .bg(colors.sidebar)
+        .border_t_1()
         .border_color(colors.border)
         .gap(px(16.))
         .items_center()
         .children(running_tasks.iter().map(|task| {
+          let progress = task.stage_progress();
+          let status_text = task.display_status();
+          let has_stages = !task.stages.is_empty();
+
           h_flex()
-            .gap(px(8.))
+            .gap(px(10.))
             .items_center()
-            .child(div().text_sm().text_color(colors.link).child(task.description.clone()))
+            // Activity indicator
+            .child(
+              Icon::new(IconName::Loader)
+                .size(px(16.))
+                .text_color(colors.primary),
+            )
+            // Task name and stage
+            .child(
+              v_flex()
+                .gap(px(2.))
+                .child(
+                  div()
+                    .text_sm()
+                    .font_weight(gpui::FontWeight::MEDIUM)
+                    .text_color(colors.foreground)
+                    .child(task.description.clone()),
+                )
+                .child(
+                  div()
+                    .text_xs()
+                    .text_color(colors.muted_foreground)
+                    .child(status_text),
+                ),
+            )
+            // Progress bar (if staged)
+            .when(has_stages, |el| {
+              el.child(
+                div()
+                  .w(px(80.))
+                  .h(px(4.))
+                  .rounded(px(2.))
+                  .bg(colors.border)
+                  .child(
+                    div()
+                      .h_full()
+                      .rounded(px(2.))
+                      .bg(colors.primary)
+                      .w(gpui::relative(progress)),
+                  ),
+              )
+            })
+            // Stage counter (if staged)
+            .when(has_stages, |el| {
+              el.child(
+                div()
+                  .text_xs()
+                  .text_color(colors.muted_foreground)
+                  .child(format!(
+                    "{}/{}",
+                    task.current_stage + 1,
+                    task.stages.len()
+                  )),
+              )
+            })
         })),
     )
   }

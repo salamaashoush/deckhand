@@ -1538,39 +1538,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "be1e0bca6c3637f992fc1cc7cbc52a78c1ef6db076dbf1059c4323d6a2048376"
 
 [[package]]
-name = "deckhand"
-version = "0.1.0"
-dependencies = [
- "anyhow",
- "bollard",
- "bytes",
- "bytesize",
- "chrono",
- "criterion",
- "dirs 6.0.0",
- "futures",
- "gpui",
- "gpui-component",
- "gpui-component-assets",
- "http-body-util",
- "image",
- "k8s-openapi",
- "kube",
- "muda",
- "parking_lot",
- "portable-pty",
- "rust-embed",
- "serde",
- "serde_json",
- "serde_yaml",
- "tokio",
- "tracing",
- "tracing-subscriber",
- "tray-icon",
- "vte",
-]
-
-[[package]]
 name = "deflate64"
 version = "0.1.10"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1727,6 +1694,40 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "330c60081dcc4c72131f8eb70510f1ac07223e5d4163db481a04a0befcffa412"
 dependencies = [
  "libloading 0.8.9",
+]
+
+[[package]]
+name = "dockside"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "bollard",
+ "bytes",
+ "bytesize",
+ "chrono",
+ "criterion",
+ "dirs 6.0.0",
+ "futures",
+ "gpui",
+ "gpui-component",
+ "gpui-component-assets",
+ "http-body-util",
+ "image",
+ "k8s-openapi",
+ "kube",
+ "muda",
+ "parking_lot",
+ "portable-pty",
+ "rust-embed",
+ "serde",
+ "serde_json",
+ "serde_yaml",
+ "tokio",
+ "tracing",
+ "tracing-subscriber",
+ "tray-icon",
+ "vte",
+ "which 7.0.3",
 ]
 
 [[package]]
@@ -1887,6 +1888,12 @@ dependencies = [
  "quote",
  "syn 2.0.112",
 ]
+
+[[package]]
+name = "env_home"
+version = "0.1.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "c7f84e12ccf0a7ddc17a6c41c93326024c42920d7ee630d04950e6926645c0fe"
 
 [[package]]
 name = "equator"
@@ -2964,7 +2971,7 @@ dependencies = [
  "tendril",
  "unicase",
  "walkdir",
- "which",
+ "which 6.0.3",
 ]
 
 [[package]]
@@ -8004,6 +8011,18 @@ dependencies = [
  "either",
  "home",
  "rustix 0.38.44",
+ "winsafe",
+]
+
+[[package]]
+name = "which"
+version = "7.0.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "24d643ce3fd3e5b54854602a080f34fb10ab75e0b813ee32d00ca2b44fa74762"
+dependencies = [
+ "either",
+ "env_home",
+ "rustix 1.1.3",
  "winsafe",
 ]
 
