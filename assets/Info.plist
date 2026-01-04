@@ -13,7 +13,7 @@
     <key>CFBundleShortVersionString</key>
     <string>0.1.0</string>
     <key>CFBundleExecutable</key>
-    <string>deckhand</string>
+    <string>dockside</string>
     <key>CFBundleIconFile</key>
     <string>AppIcon</string>
     <key>CFBundlePackageType</key>
