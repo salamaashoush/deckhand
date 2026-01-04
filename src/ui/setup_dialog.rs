@@ -10,29 +10,13 @@ use gpui_component::{
 };
 use std::process::Command;
 
+use crate::utils::{colima_cmd, find_binary, kubectl_cmd};
+
 /// Common paths for Homebrew binaries on macOS
 const BREW_PATHS: &[&str] = &[
   "/opt/homebrew/bin", // Apple Silicon
   "/usr/local/bin",    // Intel
 ];
-
-/// Find a command in PATH or common locations
-fn find_command(name: &str) -> Option<std::path::PathBuf> {
-  // First check if it's in PATH
-  if let Ok(path) = which::which(name) {
-    return Some(path);
-  }
-
-  // Check common Homebrew locations
-  for base in BREW_PATHS {
-    let path = std::path::Path::new(base).join(name);
-    if path.exists() {
-      return Some(path);
-    }
-  }
-
-  None
-}
 
 /// K8s diagnostic result
 #[derive(Debug, Clone, Default)]
@@ -48,29 +32,31 @@ pub struct K8sDiagnostic {
 /// Run K8s diagnostics (quick version - NO network calls)
 /// Use this for startup checks to avoid blocking the UI
 pub fn diagnose_k8s_quick() -> K8sDiagnostic {
-  let mut diag = K8sDiagnostic::default();
+  let kubectl_installed = find_binary("kubectl").is_some();
 
-  // Check if kubectl is installed
-  let kubectl_path = find_command("kubectl");
-  diag.kubectl_installed = kubectl_path.is_some();
-
-  if !diag.kubectl_installed {
-    diag.error_message = Some("kubectl not installed".to_string());
-    return diag;
+  if !kubectl_installed {
+    return K8sDiagnostic {
+      kubectl_installed: false,
+      error_message: Some("kubectl not installed".to_string()),
+      ..Default::default()
+    };
   }
 
-  let kubectl = kubectl_path.unwrap();
+  let mut diag = K8sDiagnostic {
+    kubectl_installed,
+    ..Default::default()
+  };
 
   // Get current context (fast local operation - reads ~/.kube/config)
-  if let Ok(output) = Command::new(&kubectl).args(["config", "current-context"]).output()
+  if let Ok(output) = kubectl_cmd().args(["config", "current-context"]).output()
     && output.status.success()
   {
     diag.current_context = Some(String::from_utf8_lossy(&output.stdout).trim().to_string());
   }
 
   // Check if colima is running and has K8s (fast local operation)
-  if let Some(colima_path) = find_command("colima")
-    && let Ok(output) = Command::new(&colima_path).args(["status", "--json"]).output()
+  if find_binary("colima").is_some()
+    && let Ok(output) = colima_cmd().args(["status", "--json"]).output()
     && output.status.success()
   {
     let stdout = String::from_utf8_lossy(&output.stdout);
@@ -99,8 +85,8 @@ pub fn diagnose_k8s_quick() -> K8sDiagnostic {
 
 /// Run full K8s API check (may be slow - use in background only)
 pub fn check_k8s_api() -> (bool, Option<String>) {
-  if let Some(kubectl) = find_command("kubectl") {
-    let api_check = Command::new(&kubectl)
+  if find_binary("kubectl").is_some() {
+    let api_check = kubectl_cmd()
       .args(["version", "--client=false", "--request-timeout=3s"])
       .output();
 
@@ -122,8 +108,8 @@ pub fn check_k8s_api() -> (bool, Option<String>) {
 
 /// Check if Colima CLI is installed
 pub fn is_colima_installed() -> bool {
-  if let Some(path) = find_command("colima") {
-    Command::new(path)
+  if find_binary("colima").is_some() {
+    colima_cmd()
       .arg("version")
       .output()
       .map(|o| o.status.success())
@@ -135,8 +121,8 @@ pub fn is_colima_installed() -> bool {
 
 /// Check if Docker CLI is installed
 pub fn is_docker_installed() -> bool {
-  if let Some(path) = find_command("docker") {
-    Command::new(path)
+  if find_binary("docker").is_some() {
+    crate::utils::docker_cmd()
       .arg("--version")
       .output()
       .map(|o| o.status.success())
@@ -164,10 +150,10 @@ pub fn is_homebrew_installed() -> bool {
 
 /// Check if any Colima VM is running
 pub fn is_colima_running() -> bool {
-  let Some(colima_path) = find_command("colima") else {
+  if find_binary("colima").is_none() {
     return false;
-  };
-  let Ok(output) = Command::new(&colima_path).args(["list", "--json"]).output() else {
+  }
+  let Ok(output) = colima_cmd().args(["list", "--json"]).output() else {
     return false;
   };
   if !output.status.success() {

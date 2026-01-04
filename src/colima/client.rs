@@ -29,6 +29,9 @@ impl ColimaClient {
 
   /// List all Colima VMs
   pub fn list() -> Result<Vec<ColimaVm>> {
+    let cmd = colima_cmd();
+    tracing::debug!("Running colima list with command: {:?}", cmd.get_program());
+
     let output = colima_cmd()
       .args(["list", "--json"])
       .stdout(Stdio::piped())
@@ -39,6 +42,7 @@ impl ColimaClient {
 
     if output.status.success() {
       let stdout = String::from_utf8_lossy(&output.stdout);
+      tracing::debug!("colima list output: {}", stdout);
       for line in stdout.lines() {
         if line.trim().is_empty() {
           continue;
@@ -54,12 +58,18 @@ impl ColimaClient {
           vms.push(vm);
         }
       }
+    } else {
+      let stderr = String::from_utf8_lossy(&output.stderr);
+      tracing::warn!("colima list failed with status {:?}: {}", output.status, stderr);
     }
+
+    tracing::info!("Found {} Colima VMs", vms.len());
 
     // If no VMs found, check if default profile exists (might be stopped)
     if vms.is_empty()
       && let Ok(default_vm) = Self::status(None)
     {
+      tracing::debug!("No VMs from list, found default profile via status");
       vms.push(default_vm);
     }
 

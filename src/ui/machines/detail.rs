@@ -1,4 +1,4 @@
-use gpui::{App, Entity, Styled, Window, div, prelude::*, px};
+use gpui::{App, Entity, Hsla, Styled, Window, div, prelude::*, px};
 use gpui_component::{
   Icon, IconName, Selectable, Sizable,
   button::{Button, ButtonVariants},
@@ -10,6 +10,46 @@ use gpui_component::{
   v_flex,
 };
 use std::rc::Rc;
+
+/// Parsed colima version information
+#[derive(Debug, Clone, Default)]
+struct ColimaVersionInfo {
+  version: String,
+  git_commit: String,
+  runtime: String,
+  arch: String,
+  client_version: String,
+  server_version: String,
+}
+
+impl ColimaVersionInfo {
+  fn parse(raw: &str) -> Self {
+    let mut info = Self::default();
+
+    for line in raw.lines() {
+      let line = line.trim();
+      if line.starts_with("colima version") {
+        info.version = line.strip_prefix("colima version").unwrap_or("").trim().to_string();
+      } else if let Some(val) = line.strip_prefix("git commit:") {
+        info.git_commit = val.trim().to_string();
+      } else if let Some(val) = line.strip_prefix("runtime:") {
+        info.runtime = val.trim().to_string();
+      } else if let Some(val) = line.strip_prefix("arch:") {
+        info.arch = val.trim().to_string();
+      } else if let Some(val) = line.strip_prefix("client:") {
+        info.client_version = val.trim().to_string();
+      } else if let Some(val) = line.strip_prefix("server:") {
+        info.server_version = val.trim().to_string();
+      }
+    }
+
+    info
+  }
+
+  fn is_loaded(&self) -> bool {
+    !self.version.is_empty()
+  }
+}
 
 use crate::assets::AppIcon;
 use crate::colima::ColimaVm;
@@ -227,18 +267,18 @@ impl MachineDetail {
     let status_text = machine.status.to_string();
     let domain = format!("{}.local", machine.name);
 
-    // Get colima version
-    let colima_version = self
+    // Parse colima version info
+    let version_info = self
       .machine_state
       .as_ref()
-      .map_or_else(|| "Loading...".to_string(), |s| s.colima_version.clone());
+      .map(|s| ColimaVersionInfo::parse(&s.colima_version))
+      .unwrap_or_default();
 
     // Basic info rows
     let mut basic_info = vec![
       ("Name", machine.name.clone()),
       ("Status", status_text),
       ("Domain", domain),
-      ("Colima Version", colima_version),
     ];
 
     if let Some(addr) = &machine.address {
@@ -287,8 +327,171 @@ impl MachineDetail {
       .p(px(16.))
       .gap(px(12.))
       .child(Self::render_section(None, basic_info, cx))
+      .child(Self::render_version_section(&version_info, cx))
       .child(Self::render_section(Some("Image"), image_info, cx))
       .child(Self::render_section(Some("Settings"), settings_info, cx))
+  }
+
+  fn render_version_section(version_info: &ColimaVersionInfo, cx: &App) -> gpui::Div {
+    let colors = &cx.theme().colors;
+
+    if !version_info.is_loaded() {
+      return v_flex()
+        .gap(px(1.))
+        .child(
+          div()
+            .py(px(8.))
+            .text_sm()
+            .font_weight(gpui::FontWeight::MEDIUM)
+            .text_color(colors.foreground)
+            .child("Version"),
+        )
+        .child(
+          div()
+            .bg(colors.background)
+            .rounded(px(8.))
+            .px(px(16.))
+            .py(px(12.))
+            .text_sm()
+            .text_color(colors.muted_foreground)
+            .child("Loading..."),
+        );
+    }
+
+    v_flex()
+      .gap(px(1.))
+      .child(
+        div()
+          .py(px(8.))
+          .text_sm()
+          .font_weight(gpui::FontWeight::MEDIUM)
+          .text_color(colors.foreground)
+          .child("Version"),
+      )
+      .child(
+        div()
+          .bg(colors.background)
+          .rounded(px(8.))
+          .overflow_hidden()
+          // Colima version row with badge
+          .child(
+            h_flex()
+              .w_full()
+              .px(px(16.))
+              .py(px(12.))
+              .items_center()
+              .justify_between()
+              .child(
+                h_flex()
+                  .gap(px(8.))
+                  .items_center()
+                  .child(
+                    div()
+                      .text_sm()
+                      .text_color(colors.secondary_foreground)
+                      .child("Colima"),
+                  )
+                  .child(Self::render_version_badge(&version_info.version, colors.primary, cx)),
+              )
+              .child(
+                div()
+                  .text_xs()
+                  .font_family("monospace")
+                  .text_color(colors.muted_foreground)
+                  .max_w(px(200.))
+                  .overflow_hidden()
+                  .text_ellipsis()
+                  .child(version_info.git_commit.clone()),
+              ),
+          )
+          // Runtime and Architecture row
+          .child(
+            h_flex()
+              .w_full()
+              .px(px(16.))
+              .py(px(12.))
+              .border_t_1()
+              .border_color(colors.border)
+              .gap(px(24.))
+              .child(
+                h_flex()
+                  .gap(px(8.))
+                  .items_center()
+                  .child(
+                    div()
+                      .text_sm()
+                      .text_color(colors.secondary_foreground)
+                      .child("Runtime"),
+                  )
+                  .child(Self::render_version_badge(&version_info.runtime, colors.success, cx)),
+              )
+              .child(
+                h_flex()
+                  .gap(px(8.))
+                  .items_center()
+                  .child(
+                    div()
+                      .text_sm()
+                      .text_color(colors.secondary_foreground)
+                      .child("Arch"),
+                  )
+                  .child(
+                    div()
+                      .text_sm()
+                      .text_color(colors.foreground)
+                      .child(version_info.arch.clone()),
+                  ),
+              ),
+          )
+          // Docker client/server versions row
+          .when(!version_info.client_version.is_empty(), |el| {
+            el.child(
+              h_flex()
+                .w_full()
+                .px(px(16.))
+                .py(px(12.))
+                .border_t_1()
+                .border_color(colors.border)
+                .gap(px(24.))
+                .child(
+                  h_flex()
+                    .gap(px(8.))
+                    .items_center()
+                    .child(
+                      div()
+                        .text_sm()
+                        .text_color(colors.secondary_foreground)
+                        .child("Client"),
+                    )
+                    .child(Self::render_version_badge(&version_info.client_version, colors.link, cx)),
+                )
+                .child(
+                  h_flex()
+                    .gap(px(8.))
+                    .items_center()
+                    .child(
+                      div()
+                        .text_sm()
+                        .text_color(colors.secondary_foreground)
+                        .child("Server"),
+                    )
+                    .child(Self::render_version_badge(&version_info.server_version, colors.link, cx)),
+                ),
+            )
+          }),
+      )
+  }
+
+  fn render_version_badge(version: &str, color: Hsla, _cx: &App) -> gpui::Div {
+    div()
+      .px(px(8.))
+      .py(px(2.))
+      .rounded(px(4.))
+      .bg(color.opacity(0.15))
+      .text_xs()
+      .font_weight(gpui::FontWeight::MEDIUM)
+      .text_color(color)
+      .child(version.to_string())
   }
 
   fn render_processes_tab(&self, cx: &App) -> gpui::Div {
