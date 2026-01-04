@@ -1,35 +1,8 @@
 use anyhow::{Result, anyhow};
-use std::path::PathBuf;
-use std::process::{Command, Stdio};
+use std::process::Stdio;
 
 use super::{ColimaStartOptions, ColimaVm, MountType, VmArch, VmFileEntry, VmOsInfo, VmRuntime, VmStatus, VmType};
-
-/// Common Homebrew paths to search for binaries
-const BREW_PATHS: &[&str] = &["/opt/homebrew/bin", "/usr/local/bin", "/usr/bin"];
-
-/// Find colima binary in PATH or common locations
-fn find_colima() -> Option<PathBuf> {
-  // First check if it's in PATH
-  if let Ok(path) = which::which("colima") {
-    return Some(path);
-  }
-
-  // Check common Homebrew locations
-  for base in BREW_PATHS {
-    let path = std::path::Path::new(base).join("colima");
-    if path.exists() {
-      return Some(path);
-    }
-  }
-
-  None
-}
-
-/// Get the colima command, falling back to "colima" if not found
-fn colima_cmd() -> Command {
-  let path = find_colima().unwrap_or_else(|| PathBuf::from("colima"));
-  Command::new(path)
-}
+use crate::utils::colima_cmd;
 
 pub struct ColimaClient;
 

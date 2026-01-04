@@ -9,6 +9,7 @@ mod state;
 mod terminal;
 mod tray;
 mod ui;
+mod utils;
 
 use std::path::PathBuf;
 use std::rc::Rc;

@@ -6,6 +6,7 @@ use crate::colima::{ColimaClient, ColimaStartOptions};
 use crate::docker::{ContainerCreateConfig, ContainerFlags, DockerClient};
 use crate::services::{TaskStage, Tokio, advance_stage, complete_task, fail_task, start_staged_task, start_task};
 use crate::state::{CurrentView, ImageInspectData, StateChanged, docker_state, settings_state};
+use crate::utils::{colima_cmd, docker_cmd, kubectl_cmd};
 
 /// Shared Docker client - initialized once in `load_initial_data`
 static DOCKER_CLIENT: std::sync::OnceLock<Arc<RwLock<Option<DockerClient>>>> = std::sync::OnceLock::new();
@@ -99,9 +100,7 @@ pub fn create_machine(options: ColimaStartOptions, cx: &mut App) {
                 format!("colima-{machine_name}")
               };
               // Try to switch kubectl context (don't fail if it doesn't work)
-              let _ = std::process::Command::new("kubectl")
-                .args(["config", "use-context", &kubectl_context])
-                .output();
+              let _ = kubectl_cmd().args(["config", "use-context", &kubectl_context]).output();
             }
 
             Ok(vms)
@@ -171,9 +170,7 @@ pub fn start_machine(name: String, cx: &mut App) {
                 format!("colima-{name}")
               };
               // Try to switch kubectl context (don't fail if it doesn't work)
-              let _ = std::process::Command::new("kubectl")
-                .args(["config", "use-context", &kubectl_context])
-                .output();
+              let _ = kubectl_cmd().args(["config", "use-context", &kubectl_context]).output();
             }
 
             Ok((vms, has_k8s))
@@ -357,9 +354,7 @@ pub fn edit_machine(options: ColimaStartOptions, cx: &mut App) {
             format!("colima-{name_for_context}")
           };
           // Try to switch kubectl context (don't fail if it doesn't work)
-          let _ = std::process::Command::new("kubectl")
-            .args(["config", "use-context", &kubectl_context])
-            .output();
+          let _ = kubectl_cmd().args(["config", "use-context", &kubectl_context]).output();
         }
 
         vms
@@ -417,9 +412,7 @@ pub fn restart_machine(name: String, cx: &mut App) {
                 format!("colima-{name}")
               };
               // Try to switch kubectl context (don't fail if it doesn't work)
-              let _ = std::process::Command::new("kubectl")
-                .args(["config", "use-context", &kubectl_context])
-                .output();
+              let _ = kubectl_cmd().args(["config", "use-context", &kubectl_context]).output();
             }
 
             Ok((vms, has_k8s))
@@ -602,9 +595,7 @@ pub fn switch_kubectl_context(context: String, cx: &mut App) {
     let result = cx
       .background_executor()
       .spawn(async move {
-        let output = std::process::Command::new("kubectl")
-          .args(["config", "use-context", &context])
-          .output();
+        let output = kubectl_cmd().args(["config", "use-context", &context]).output();
         match output {
           Ok(o) if o.status.success() => Ok(()),
           Ok(o) => Err(String::from_utf8_lossy(&o.stderr).to_string()),
@@ -649,9 +640,7 @@ pub fn reset_colima_kubernetes(cx: &mut App) {
     let result = cx
       .background_executor()
       .spawn(async move {
-        let output = std::process::Command::new("colima")
-          .args(["kubernetes", "reset"])
-          .output();
+        let output = colima_cmd().args(["kubernetes", "reset"]).output();
         match output {
           Ok(o) if o.status.success() => Ok(()),
           Ok(o) => Err(String::from_utf8_lossy(&o.stderr).to_string()),
@@ -698,7 +687,7 @@ pub fn kubernetes_start(name: String, cx: &mut App) {
       .background_executor()
       .spawn(async move {
         let profile = if name == "default" { None } else { Some(name.as_str()) };
-        let mut cmd = std::process::Command::new("colima");
+        let mut cmd = colima_cmd();
         cmd.arg("kubernetes").arg("start");
         if let Some(p) = profile {
           cmd.arg("--profile").arg(p);
@@ -746,7 +735,7 @@ pub fn kubernetes_stop(name: String, cx: &mut App) {
       .background_executor()
       .spawn(async move {
         let profile = if name == "default" { None } else { Some(name.as_str()) };
-        let mut cmd = std::process::Command::new("colima");
+        let mut cmd = colima_cmd();
         cmd.arg("kubernetes").arg("stop");
         if let Some(p) = profile {
           cmd.arg("--profile").arg(p);
@@ -793,7 +782,7 @@ pub fn kubernetes_reset(name: String, cx: &mut App) {
       .background_executor()
       .spawn(async move {
         let profile = if name == "default" { None } else { Some(name.as_str()) };
-        let mut cmd = std::process::Command::new("colima");
+        let mut cmd = colima_cmd();
         cmd.arg("kubernetes").arg("reset");
         if let Some(p) = profile {
           cmd.arg("--profile").arg(p);
@@ -923,9 +912,7 @@ pub fn enable_kubernetes(name: String, cx: &mut App) {
         };
 
         // Try to switch kubectl context (don't fail if it doesn't work)
-        let _ = std::process::Command::new("kubectl")
-          .args(["config", "use-context", &kubectl_context])
-          .output();
+        let _ = kubectl_cmd().args(["config", "use-context", &kubectl_context]).output();
 
         vms
       })
@@ -2227,8 +2214,6 @@ pub fn set_default_machine(name: String, has_kubernetes: bool, cx: &mut App) {
     let result = cx
       .background_executor()
       .spawn(async move {
-        use std::process::Command;
-
         // Docker context name for colima is "colima" for default or "colima-<profile>" for others
         let context_name = if name == "default" {
           "colima".to_string()
@@ -2237,7 +2222,7 @@ pub fn set_default_machine(name: String, has_kubernetes: bool, cx: &mut App) {
         };
 
         // Switch docker context
-        let docker_output = Command::new("docker").args(["context", "use", &context_name]).output();
+        let docker_output = docker_cmd().args(["context", "use", &context_name]).output();
 
         match &docker_output {
           Err(e) => return Err(format!("Failed to switch docker context: {e}")),
@@ -2256,9 +2241,7 @@ pub fn set_default_machine(name: String, has_kubernetes: bool, cx: &mut App) {
           let kubectl_context = context_name.clone();
 
           // k8s context switch is optional - don't fail if kubectl isn't available
-          let _ = Command::new("kubectl")
-            .args(["config", "use-context", &kubectl_context])
-            .output();
+          let _ = kubectl_cmd().args(["config", "use-context", &kubectl_context]).output();
         }
 
         Ok((context_name, has_kubernetes))
@@ -2319,10 +2302,7 @@ pub fn compose_up(project_name: String, cx: &mut App) {
     let result = cx
       .background_executor()
       .spawn(async move {
-        use std::process::Command;
-        let output = Command::new("docker")
-          .args(["compose", "-p", &project, "up", "-d"])
-          .output();
+        let output = docker_cmd().args(["compose", "-p", &project, "up", "-d"]).output();
 
         match output {
           Ok(out) if out.status.success() => Ok(()),
@@ -2364,10 +2344,7 @@ pub fn compose_down(project_name: String, cx: &mut App) {
     let result = cx
       .background_executor()
       .spawn(async move {
-        use std::process::Command;
-        let output = Command::new("docker")
-          .args(["compose", "-p", &project, "down"])
-          .output();
+        let output = docker_cmd().args(["compose", "-p", &project, "down"]).output();
 
         match output {
           Ok(out) if out.status.success() => Ok(()),
@@ -2409,10 +2386,7 @@ pub fn compose_restart(project_name: String, cx: &mut App) {
     let result = cx
       .background_executor()
       .spawn(async move {
-        use std::process::Command;
-        let output = Command::new("docker")
-          .args(["compose", "-p", &project, "restart"])
-          .output();
+        let output = docker_cmd().args(["compose", "-p", &project, "restart"]).output();
 
         match output {
           Ok(out) if out.status.success() => Ok(()),
