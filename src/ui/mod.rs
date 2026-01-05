@@ -1,8 +1,11 @@
 pub mod activity;
+pub mod command_palette;
 pub mod components;
 pub mod compose;
 pub mod containers;
 pub mod deployments;
+pub mod dialogs;
+pub mod global_search;
 pub mod images;
 pub mod machines;
 pub mod networks;

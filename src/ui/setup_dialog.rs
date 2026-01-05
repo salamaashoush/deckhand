@@ -375,10 +375,9 @@ impl SetupDialog {
                     .ghost()
                     .small()
                     .on_click(|_ev, _window, cx| {
-                      let options = crate::colima::ColimaStartOptions::new()
-                        .with_name("default".to_string())
-                        .with_kubernetes(true);
-                      crate::services::create_machine(options, cx);
+                      let mut config = crate::colima::ColimaConfig::default();
+                      config.kubernetes.enabled = true;
+                      crate::services::create_machine("default".to_string(), config, cx);
                     }),
                 ),
             ),
