@@ -129,13 +129,13 @@ impl ListDelegate for ContainerListDelegate {
                   }
                 }),
             )
-            .item(PopupMenuItem::new("Pause").icon(IconName::Minus).on_click({
+            .item(PopupMenuItem::new("Pause").icon(Icon::new(AppIcon::Pause)).on_click({
               let id = id.clone();
               move |_, _, cx| {
                 services::pause_container(id.clone(), cx);
               }
             }))
-            .item(PopupMenuItem::new("Kill").icon(IconName::Close).on_click({
+            .item(PopupMenuItem::new("Kill").icon(Icon::new(AppIcon::Stop)).on_click({
               let id = id.clone();
               move |_, _, cx| {
                 services::kill_container(id.clone(), cx);
@@ -164,7 +164,7 @@ impl ListDelegate for ContainerListDelegate {
                 services::open_container_inspect(id.clone(), cx);
               }
             }))
-            .item(PopupMenuItem::new("Files").icon(IconName::Folder).on_click({
+            .item(PopupMenuItem::new("Files").icon(Icon::new(AppIcon::Files)).on_click({
               let id = id.clone();
               move |_, _, cx| {
                 services::open_container_files(id.clone(), cx);
@@ -185,7 +185,7 @@ impl ListDelegate for ContainerListDelegate {
                 services::stop_container(id.clone(), cx);
               }
             }))
-            .item(PopupMenuItem::new("Kill").icon(IconName::Close).on_click({
+            .item(PopupMenuItem::new("Kill").icon(Icon::new(AppIcon::Stop)).on_click({
               let id = id.clone();
               move |_, _, cx| {
                 services::kill_container(id.clone(), cx);
@@ -196,12 +196,6 @@ impl ListDelegate for ContainerListDelegate {
               let id = id.clone();
               move |_, _, cx| {
                 services::open_container_logs(id.clone(), cx);
-              }
-            }))
-            .item(PopupMenuItem::new("Inspect").icon(IconName::Info).on_click({
-              let id = id.clone();
-              move |_, _, cx| {
-                services::open_container_inspect(id.clone(), cx);
               }
             }));
         } else {
@@ -230,20 +224,24 @@ impl ListDelegate for ContainerListDelegate {
         // Common actions for all states
         menu = menu
           .separator()
-          .item(PopupMenuItem::new("Rename").icon(IconName::Redo).on_click({
+          .item(PopupMenuItem::new("Rename").icon(Icon::new(AppIcon::Edit)).on_click({
             let id = id.clone();
             let name = name.clone();
             move |_, _, cx| {
               services::request_rename_container(id.clone(), name.clone(), cx);
             }
           }))
-          .item(PopupMenuItem::new("Commit to Image").icon(IconName::Copy).on_click({
-            let id = id.clone();
-            let name = name.clone();
-            move |_, _, cx| {
-              services::request_commit_container(id.clone(), name.clone(), cx);
-            }
-          }))
+          .item(
+            PopupMenuItem::new("Commit to Image")
+              .icon(Icon::new(AppIcon::Copy))
+              .on_click({
+                let id = id.clone();
+                let name = name.clone();
+                move |_, _, cx| {
+                  services::request_commit_container(id.clone(), name.clone(), cx);
+                }
+              }),
+          )
           .item(PopupMenuItem::new("Export").icon(IconName::ExternalLink).on_click({
             let id = id.clone();
             let name = name.clone();
@@ -516,7 +514,7 @@ impl ContainerList {
           .flex()
           .items_center()
           .justify_center()
-          .child(Icon::new(IconName::Search).text_color(colors.muted_foreground)),
+          .child(Icon::new(AppIcon::Search).text_color(colors.muted_foreground)),
       )
       .child(
         div()
@@ -624,7 +622,7 @@ impl Render for ContainerList {
           .border_b_1()
           .border_color(colors.border)
           .child(
-            Icon::new(IconName::Search)
+            Icon::new(AppIcon::Search)
               .size(px(16.))
               .text_color(colors.muted_foreground),
           )

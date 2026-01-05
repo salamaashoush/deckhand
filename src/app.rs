@@ -505,7 +505,7 @@ impl DocksideApp {
                     SidebarMenu::new()
                         .child(
                             SidebarMenuItem::new("Containers")
-                                .icon(IconName::SquareTerminal)
+                                .icon(AppIcon::Container)
                                 .active(current_view == CurrentView::Containers)
                                 .on_click(cx.listener(|_this, _ev, _window, cx| {
                                     crate::services::set_view(CurrentView::Containers, cx);
@@ -513,7 +513,7 @@ impl DocksideApp {
                         )
                         .child(
                             SidebarMenuItem::new("Compose")
-                                .icon(IconName::LayoutDashboard)
+                                .icon(AppIcon::Container)
                                 .active(current_view == CurrentView::Compose)
                                 .on_click(cx.listener(|_this, _ev, _window, cx| {
                                     crate::services::set_view(CurrentView::Compose, cx);
@@ -521,7 +521,7 @@ impl DocksideApp {
                         )
                         .child(
                             SidebarMenuItem::new("Volumes")
-                                .icon(IconName::Folder)
+                                .icon(AppIcon::Volume)
                                 .active(current_view == CurrentView::Volumes)
                                 .on_click(cx.listener(|_this, _ev, _window, cx| {
                                     crate::services::set_view(CurrentView::Volumes, cx);
@@ -529,7 +529,7 @@ impl DocksideApp {
                         )
                         .child(
                             SidebarMenuItem::new("Images")
-                                .icon(IconName::GalleryVerticalEnd)
+                                .icon(AppIcon::Image)
                                 .active(current_view == CurrentView::Images)
                                 .on_click(cx.listener(|_this, _ev, _window, cx| {
                                     crate::services::set_view(CurrentView::Images, cx);
@@ -537,7 +537,7 @@ impl DocksideApp {
                         )
                         .child(
                             SidebarMenuItem::new("Networks")
-                                .icon(IconName::Globe)
+                                .icon(AppIcon::Network)
                                 .active(current_view == CurrentView::Networks)
                                 .on_click(cx.listener(|_this, _ev, _window, cx| {
                                     crate::services::set_view(CurrentView::Networks, cx);
@@ -550,7 +550,7 @@ impl DocksideApp {
                     SidebarMenu::new()
                         .child(
                             SidebarMenuItem::new("Pods")
-                                .icon(Icon::new(AppIcon::Pod))
+                                .icon(AppIcon::Pod)
                                 .active(current_view == CurrentView::Pods)
                                 .on_click(cx.listener(|_this, _ev, _window, cx| {
                                     crate::services::set_view(CurrentView::Pods, cx);
@@ -558,7 +558,7 @@ impl DocksideApp {
                         )
                         .child(
                             SidebarMenuItem::new("Deployments")
-                                .icon(Icon::new(AppIcon::Deployment))
+                                .icon(AppIcon::Deployment)
                                 .active(current_view == CurrentView::Deployments)
                                 .on_click(cx.listener(|_this, _ev, _window, cx| {
                                     crate::services::set_view(CurrentView::Deployments, cx);
@@ -566,7 +566,7 @@ impl DocksideApp {
                         )
                         .child(
                             SidebarMenuItem::new("Services")
-                                .icon(IconName::Globe)
+                                .icon(AppIcon::Service)
                                 .active(current_view == CurrentView::Services)
                                 .on_click(cx.listener(|_this, _ev, _window, cx| {
                                     crate::services::set_view(CurrentView::Services, cx);
@@ -578,7 +578,7 @@ impl DocksideApp {
                 SidebarGroup::new("Colima").child(
                     SidebarMenu::new().child(
                         SidebarMenuItem::new("Machines")
-                            .icon(IconName::Frame)
+                            .icon(AppIcon::Machine)
                             .active(current_view == CurrentView::Machines)
                             .on_click(cx.listener(|_this, _ev, _window, cx| {
                                 crate::services::set_view(CurrentView::Machines, cx);
@@ -599,14 +599,14 @@ impl DocksideApp {
                         )
                         .child(
                             SidebarMenuItem::new("Prune")
-                                .icon(Icon::new(AppIcon::Trash))
+                                .icon(AppIcon::Trash)
                                 .on_click(cx.listener(|_this, _ev, window, cx| {
                                     Self::show_prune_dialog(window, cx);
                                 })),
                         )
                         .child(
                             SidebarMenuItem::new("Settings")
-                                .icon(IconName::Settings)
+                                .icon(AppIcon::Settings)
                                 .active(current_view == CurrentView::Settings)
                                 .on_click(cx.listener(|_this, _ev, _window, cx| {
                                     crate::services::set_view(CurrentView::Settings, cx);

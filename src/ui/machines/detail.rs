@@ -1,6 +1,6 @@
 use gpui::{App, Entity, Styled, Window, div, prelude::*, px};
 use gpui_component::{
-  Icon, IconName, Selectable, Sizable,
+  Icon, Selectable, Sizable,
   button::{Button, ButtonVariants},
   h_flex,
   input::{Input, InputState},
@@ -445,7 +445,7 @@ impl MachineDetail {
           .items_center()
           .gap(px(8.))
           .child(
-            Icon::new(IconName::SquareTerminal)
+            Icon::new(AppIcon::Terminal)
               .size(px(14.))
               .text_color(colors.muted_foreground),
           )
@@ -540,7 +540,7 @@ impl MachineDetail {
                 .gap(px(8.))
                 .items_center()
                 .child(
-                  Icon::new(IconName::Folder)
+                  Icon::new(AppIcon::Folder)
                     .size(px(14.))
                     .text_color(colors.muted_foreground),
                 )
@@ -646,7 +646,7 @@ impl MachineDetail {
               .gap(px(8.))
               .items_center()
               .child(
-                Icon::new(IconName::Settings)
+                Icon::new(AppIcon::Settings)
                   .size(px(14.))
                   .text_color(colors.muted_foreground),
               )
@@ -660,7 +660,7 @@ impl MachineDetail {
           )
           .child(
             Button::new("copy-ssh")
-              .icon(Icon::new(IconName::Copy))
+              .icon(Icon::new(AppIcon::Copy))
               .ghost()
               .xsmall()
               .tooltip("Copy to clipboard")
@@ -962,7 +962,7 @@ impl MachineDetail {
             h_flex()
               .items_center()
               .gap(px(8.))
-              .child(Icon::new(IconName::ChartPie).size(px(16.)).text_color(colors.primary))
+              .child(Icon::new(AppIcon::Activity).size(px(16.)).text_color(colors.primary))
               .child(
                 div()
                   .text_sm()
@@ -1044,7 +1044,7 @@ impl MachineDetail {
             h_flex()
               .items_center()
               .gap(px(8.))
-              .child(Icon::new(IconName::Folder).size(px(16.)).text_color(colors.success))
+              .child(Icon::new(AppIcon::Folder).size(px(16.)).text_color(colors.success))
               .child(
                 div()
                   .text_sm()
@@ -1219,7 +1219,7 @@ impl MachineDetail {
             .child(log_type_selector)
             .child(
               Button::new("refresh-logs")
-                .icon(IconName::Redo)
+                .icon(Icon::new(AppIcon::Refresh))
                 .ghost()
                 .compact()
                 .opacity(0.5),
@@ -1251,7 +1251,7 @@ impl MachineDetail {
             .child(log_type_selector)
             .child(
               Button::new("refresh-logs")
-                .icon(IconName::Redo)
+                .icon(Icon::new(AppIcon::Refresh))
                 .ghost()
                 .compact()
                 .when_some(on_refresh, |btn, cb| {
@@ -1287,7 +1287,7 @@ impl MachineDetail {
           .child(log_type_selector)
           .child(
             Button::new("refresh-logs")
-              .icon(IconName::Redo)
+              .icon(Icon::new(AppIcon::Refresh))
               .ghost()
               .compact()
               .when_some(on_refresh, |btn, cb| {
@@ -1328,7 +1328,7 @@ impl MachineDetail {
       .justify_center()
       .gap(px(16.))
       .child(
-        Icon::new(IconName::SquareTerminal)
+        Icon::new(AppIcon::Terminal)
           .size(px(48.))
           .text_color(colors.muted_foreground),
       )

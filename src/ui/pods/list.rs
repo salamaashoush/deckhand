@@ -529,7 +529,7 @@ impl PodList {
           .flex()
           .items_center()
           .justify_center()
-          .child(Icon::new(IconName::Search).text_color(colors.muted_foreground)),
+          .child(Icon::new(AppIcon::Search).text_color(colors.muted_foreground)),
       )
       .child(
         div()
@@ -682,7 +682,7 @@ impl Render for PodList {
           .border_b_1()
           .border_color(colors.border)
           .child(
-            Icon::new(IconName::Search)
+            Icon::new(AppIcon::Search)
               .size(px(16.))
               .text_color(colors.muted_foreground),
           )

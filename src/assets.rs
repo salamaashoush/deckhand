@@ -53,11 +53,16 @@ impl AssetSource for Assets {
 pub enum AppIcon {
   // Actions
   Play,
+  Pause,
   Stop,
   Restart,
+  Refresh,
   Trash,
   Plus,
   Search,
+  Edit,
+  Copy,
+  Settings,
   // Resources
   Container,
   Image,
@@ -71,6 +76,7 @@ pub enum AppIcon {
   Terminal,
   Logs,
   Files,
+  Folder,
   Activity,
   ChevronRight,
   ChevronDown,
@@ -83,11 +89,16 @@ impl IconNamed for AppIcon {
     match self {
       // Actions
       Self::Play => "icons/play.svg",
+      Self::Pause => "icons/pause.svg",
       Self::Stop => "icons/stop.svg",
       Self::Restart => "icons/restart.svg",
+      Self::Refresh => "icons/refresh.svg",
       Self::Trash => "icons/trash.svg",
       Self::Plus => "icons/plus.svg",
       Self::Search => "icons/search.svg",
+      Self::Edit => "icons/edit.svg",
+      Self::Copy => "icons/copy.svg",
+      Self::Settings => "icons/settings.svg",
       // Resources
       Self::Container => "icons/container.svg",
       Self::Image => "icons/image.svg",
@@ -101,6 +112,7 @@ impl IconNamed for AppIcon {
       Self::Terminal => "icons/terminal.svg",
       Self::Logs => "icons/logs.svg",
       Self::Files => "icons/files.svg",
+      Self::Folder => "icons/folder.svg",
       Self::Activity => "icons/activity.svg",
       Self::ChevronRight => "icons/chevron-right.svg",
       Self::ChevronDown => "icons/chevron-down.svg",

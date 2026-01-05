@@ -197,12 +197,16 @@ impl ListDelegate for MachineListDelegate {
                           }
                         }),
                     )
-                    .item(PopupMenuItem::new("Update Runtime").icon(IconName::Redo).on_click({
-                      let n = n.clone();
-                      move |_, _, cx| {
-                        services::update_machine_runtime(n.clone(), cx);
-                      }
-                    }))
+                    .item(
+                      PopupMenuItem::new("Update Runtime")
+                        .icon(Icon::new(AppIcon::Refresh))
+                        .on_click({
+                          let n = n.clone();
+                          move |_, _, cx| {
+                            services::update_machine_runtime(n.clone(), cx);
+                          }
+                        }),
+                    )
                     .separator()
                     .item(
                       PopupMenuItem::new("Terminal")
@@ -279,7 +283,7 @@ impl ListDelegate for MachineListDelegate {
 
                 menu = menu
                   .separator()
-                  .item(PopupMenuItem::new("Edit").icon(IconName::Settings).on_click({
+                  .item(PopupMenuItem::new("Edit").icon(Icon::new(AppIcon::Edit)).on_click({
                     let n = n.clone();
                     move |_, _, cx| {
                       docker_state(cx).update(cx, |_, cx| {
@@ -465,7 +469,7 @@ impl MachineList {
           .flex()
           .items_center()
           .justify_center()
-          .child(Icon::new(IconName::Search).text_color(colors.muted_foreground)),
+          .child(Icon::new(AppIcon::Search).text_color(colors.muted_foreground)),
       )
       .child(
         div()
@@ -568,14 +572,14 @@ impl Render for MachineList {
                 menu
                   .item(
                     PopupMenuItem::new("Update All Runtimes")
-                      .icon(IconName::Redo)
+                      .icon(Icon::new(AppIcon::Refresh))
                       .on_click(|_, _, cx| {
                         services::update_all_machines(cx);
                       }),
                   )
                   .item(
                     PopupMenuItem::new("Prune Cache")
-                      .icon(IconName::Delete)
+                      .icon(Icon::new(AppIcon::Trash))
                       .on_click(|_, _, cx| {
                         services::prune_cache(false, cx);
                       }),
@@ -583,7 +587,7 @@ impl Render for MachineList {
                   .separator()
                   .item(
                     PopupMenuItem::new("Refresh Machines")
-                      .icon(IconName::Redo)
+                      .icon(Icon::new(AppIcon::Refresh))
                       .on_click(|_, _, cx| {
                         services::refresh_machines(cx);
                       }),
@@ -605,7 +609,7 @@ impl Render for MachineList {
           .border_b_1()
           .border_color(colors.border)
           .child(
-            Icon::new(IconName::Search)
+            Icon::new(AppIcon::Search)
               .size(px(16.))
               .text_color(colors.muted_foreground),
           )
