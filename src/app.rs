@@ -786,10 +786,22 @@ impl DocksideApp {
       PaletteAction::RestartDefaultMachine => {
         crate::services::restart_colima(None, cx);
       }
+      PaletteAction::UpdateDefaultMachineRuntime => {
+        crate::services::update_machine_runtime("default".to_string(), cx);
+      }
+      PaletteAction::UpdateAllMachines => {
+        crate::services::update_all_machines(cx);
+      }
+      PaletteAction::PruneMachineCache => {
+        crate::services::prune_cache(false, cx);
+      }
 
       // Kubernetes actions
       PaletteAction::ResetKubernetes => {
         crate::services::reset_colima_kubernetes(cx);
+      }
+      PaletteAction::EnableKubernetes => {
+        crate::services::enable_kubernetes("default".to_string(), cx);
       }
 
       // UI actions

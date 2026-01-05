@@ -1,4 +1,4 @@
-use crate::colima::{VmFileEntry, VmOsInfo};
+use crate::colima::{ColimaConfig, VmFileEntry, VmOsInfo};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum CurrentView {
@@ -57,4 +57,8 @@ pub struct MachineTabState {
   pub stats_loading: bool,
   /// Colima version
   pub colima_version: String,
+  /// Machine configuration (for mounts, env, etc.)
+  pub config: Option<ColimaConfig>,
+  /// SSH config string
+  pub ssh_config: Option<String>,
 }

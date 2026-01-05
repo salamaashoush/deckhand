@@ -14,18 +14,20 @@ use crate::docker::VolumeFileEntry;
 pub enum MachineDetailTab {
   #[default]
   Info = 0,
-  Processes = 1,
+  Config = 1,
   Stats = 2,
-  Logs = 3,
-  Terminal = 4,
-  Files = 5,
+  Processes = 3,
+  Logs = 4,
+  Terminal = 5,
+  Files = 6,
 }
 
 impl MachineDetailTab {
-  pub const ALL: [MachineDetailTab; 6] = [
+  pub const ALL: [MachineDetailTab; 7] = [
     MachineDetailTab::Info,
-    MachineDetailTab::Processes,
+    MachineDetailTab::Config,
     MachineDetailTab::Stats,
+    MachineDetailTab::Processes,
     MachineDetailTab::Logs,
     MachineDetailTab::Terminal,
     MachineDetailTab::Files,
@@ -34,8 +36,9 @@ impl MachineDetailTab {
   pub fn label(self) -> &'static str {
     match self {
       MachineDetailTab::Info => "Info",
-      MachineDetailTab::Processes => "Processes",
+      MachineDetailTab::Config => "Config",
       MachineDetailTab::Stats => "Stats",
+      MachineDetailTab::Processes => "Processes",
       MachineDetailTab::Logs => "Logs",
       MachineDetailTab::Terminal => "Terminal",
       MachineDetailTab::Files => "Files",

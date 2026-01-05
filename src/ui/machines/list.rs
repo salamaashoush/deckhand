@@ -197,6 +197,12 @@ impl ListDelegate for MachineListDelegate {
                           }
                         }),
                     )
+                    .item(PopupMenuItem::new("Update Runtime").icon(IconName::Redo).on_click({
+                      let n = n.clone();
+                      move |_, _, cx| {
+                        services::update_machine_runtime(n.clone(), cx);
+                      }
+                    }))
                     .separator()
                     .item(
                       PopupMenuItem::new("Terminal")
@@ -215,7 +221,7 @@ impl ListDelegate for MachineListDelegate {
                       }
                     }));
 
-                  // Kubernetes actions (only if machine has K8s enabled)
+                  // Kubernetes actions
                   if has_k8s {
                     menu = menu
                       .separator()
@@ -249,6 +255,18 @@ impl ListDelegate for MachineListDelegate {
                             }
                           }),
                       );
+                  } else {
+                    // Enable K8s for machines that don't have it
+                    menu = menu.separator().item(
+                      PopupMenuItem::new("Enable K8s")
+                        .icon(Icon::new(AppIcon::Kubernetes))
+                        .on_click({
+                          let n = n.clone();
+                          move |_, _, cx| {
+                            services::enable_kubernetes(n.clone(), cx);
+                          }
+                        }),
+                    );
                   }
                 } else {
                   menu = menu.item(PopupMenuItem::new("Start").icon(Icon::new(AppIcon::Play)).on_click({
@@ -539,6 +557,38 @@ impl Render for MachineList {
               .on_click(cx.listener(|_this, _ev, _window, cx| {
                 cx.emit(MachineListEvent::NewMachine);
               })),
+          )
+          // General Colima actions dropdown
+          .child(
+            Button::new("colima-actions")
+              .icon(Icon::new(IconName::Ellipsis))
+              .ghost()
+              .compact()
+              .dropdown_menu(|menu, _window, _cx| {
+                menu
+                  .item(
+                    PopupMenuItem::new("Update All Runtimes")
+                      .icon(IconName::Redo)
+                      .on_click(|_, _, cx| {
+                        services::update_all_machines(cx);
+                      }),
+                  )
+                  .item(
+                    PopupMenuItem::new("Prune Cache")
+                      .icon(IconName::Delete)
+                      .on_click(|_, _, cx| {
+                        services::prune_cache(false, cx);
+                      }),
+                  )
+                  .separator()
+                  .item(
+                    PopupMenuItem::new("Refresh Machines")
+                      .icon(IconName::Redo)
+                      .on_click(|_, _, cx| {
+                        services::refresh_machines(cx);
+                      }),
+                  )
+              }),
           ),
       );
 

@@ -1,4 +1,4 @@
-use gpui::{App, Entity, Hsla, Styled, Window, div, prelude::*, px};
+use gpui::{App, Entity, Styled, Window, div, prelude::*, px};
 use gpui_component::{
   Icon, IconName, Selectable, Sizable,
   button::{Button, ButtonVariants},
@@ -60,14 +60,13 @@ use crate::state::{MachineLogType, MachineTabState};
 use crate::terminal::TerminalView;
 use crate::ui::components::{FileExplorer, FileExplorerConfig, FileExplorerState};
 
-type MachineActionCallback = Rc<dyn Fn(&str, &mut Window, &mut App) + 'static>;
-type MachineEditCallback = Rc<dyn Fn(&ColimaVm, &mut Window, &mut App) + 'static>;
 type TabChangeCallback = Rc<dyn Fn(&MachineDetailTab, &mut Window, &mut App) + 'static>;
 type FileNavigateCallback = Rc<dyn Fn(&str, &mut Window, &mut App) + 'static>;
 type RefreshCallback = Rc<dyn Fn(&(), &mut Window, &mut App) + 'static>;
 type LogTypeCallback = Rc<dyn Fn(&MachineLogType, &mut Window, &mut App) + 'static>;
 type FileSelectCallback = Rc<dyn Fn(&str, &mut Window, &mut App) + 'static>;
 type SymlinkClickCallback = Rc<dyn Fn(&str, &mut Window, &mut App) + 'static>;
+type CopyCallback = Rc<dyn Fn(&str, &mut Window, &mut App) + 'static>;
 
 pub struct MachineDetail {
   machine: Option<ColimaVm>,
@@ -76,11 +75,6 @@ pub struct MachineDetail {
   terminal_view: Option<Entity<TerminalView>>,
   logs_editor: Option<Entity<InputState>>,
   file_content_editor: Option<Entity<InputState>>,
-  on_start: Option<MachineActionCallback>,
-  on_stop: Option<MachineActionCallback>,
-  on_restart: Option<MachineActionCallback>,
-  on_delete: Option<MachineActionCallback>,
-  on_edit: Option<MachineEditCallback>,
   on_tab_change: Option<TabChangeCallback>,
   on_navigate_path: Option<FileNavigateCallback>,
   on_refresh_logs: Option<RefreshCallback>,
@@ -88,10 +82,7 @@ pub struct MachineDetail {
   on_file_select: Option<FileSelectCallback>,
   on_close_file_viewer: Option<RefreshCallback>,
   on_symlink_click: Option<SymlinkClickCallback>,
-  // Kubernetes action callbacks
-  on_k8s_start: Option<MachineActionCallback>,
-  on_k8s_stop: Option<MachineActionCallback>,
-  on_k8s_reset: Option<MachineActionCallback>,
+  on_copy: Option<CopyCallback>,
 }
 
 impl MachineDetail {
@@ -103,11 +94,6 @@ impl MachineDetail {
       terminal_view: None,
       logs_editor: None,
       file_content_editor: None,
-      on_start: None,
-      on_stop: None,
-      on_restart: None,
-      on_delete: None,
-      on_edit: None,
       on_tab_change: None,
       on_navigate_path: None,
       on_refresh_logs: None,
@@ -115,9 +101,7 @@ impl MachineDetail {
       on_file_select: None,
       on_close_file_viewer: None,
       on_symlink_click: None,
-      on_k8s_start: None,
-      on_k8s_stop: None,
-      on_k8s_reset: None,
+      on_copy: None,
     }
   }
 
@@ -148,46 +132,6 @@ impl MachineDetail {
 
   pub fn file_content_editor(mut self, editor: Option<Entity<InputState>>) -> Self {
     self.file_content_editor = editor;
-    self
-  }
-
-  pub fn on_start<F>(mut self, callback: F) -> Self
-  where
-    F: Fn(&str, &mut Window, &mut App) + 'static,
-  {
-    self.on_start = Some(Rc::new(callback));
-    self
-  }
-
-  pub fn on_stop<F>(mut self, callback: F) -> Self
-  where
-    F: Fn(&str, &mut Window, &mut App) + 'static,
-  {
-    self.on_stop = Some(Rc::new(callback));
-    self
-  }
-
-  pub fn on_restart<F>(mut self, callback: F) -> Self
-  where
-    F: Fn(&str, &mut Window, &mut App) + 'static,
-  {
-    self.on_restart = Some(Rc::new(callback));
-    self
-  }
-
-  pub fn on_delete<F>(mut self, callback: F) -> Self
-  where
-    F: Fn(&str, &mut Window, &mut App) + 'static,
-  {
-    self.on_delete = Some(Rc::new(callback));
-    self
-  }
-
-  pub fn on_edit<F>(mut self, callback: F) -> Self
-  where
-    F: Fn(&ColimaVm, &mut Window, &mut App) + 'static,
-  {
-    self.on_edit = Some(Rc::new(callback));
     self
   }
 
@@ -247,27 +191,11 @@ impl MachineDetail {
     self
   }
 
-  pub fn on_k8s_start<F>(mut self, callback: F) -> Self
+  pub fn on_copy<F>(mut self, callback: F) -> Self
   where
     F: Fn(&str, &mut Window, &mut App) + 'static,
   {
-    self.on_k8s_start = Some(Rc::new(callback));
-    self
-  }
-
-  pub fn on_k8s_stop<F>(mut self, callback: F) -> Self
-  where
-    F: Fn(&str, &mut Window, &mut App) + 'static,
-  {
-    self.on_k8s_stop = Some(Rc::new(callback));
-    self
-  }
-
-  pub fn on_k8s_reset<F>(mut self, callback: F) -> Self
-  where
-    F: Fn(&str, &mut Window, &mut App) + 'static,
-  {
-    self.on_k8s_reset = Some(Rc::new(callback));
+    self.on_copy = Some(Rc::new(callback));
     self
   }
 
@@ -298,6 +226,7 @@ impl MachineDetail {
   }
 
   fn render_info_tab(&self, machine: &ColimaVm, cx: &App) -> gpui::Div {
+    let colors = &cx.theme().colors;
     let status_text = machine.status.to_string();
     let domain = format!("{}.local", machine.name);
 
@@ -308,7 +237,7 @@ impl MachineDetail {
       .map(|s| ColimaVersionInfo::parse(&s.colima_version))
       .unwrap_or_default();
 
-    // Basic info rows
+    // Basic identity info
     let mut basic_info = vec![
       ("Name", machine.name.clone()),
       ("Status", status_text),
@@ -318,11 +247,17 @@ impl MachineDetail {
     if let Some(addr) = &machine.address {
       basic_info.push(("IP Address", addr.clone()));
     }
+    if let Some(hostname) = &machine.hostname {
+      basic_info.push(("Hostname", hostname.clone()));
+    }
+    if let Some(socket) = &machine.docker_socket {
+      basic_info.push(("Docker Socket", socket.clone()));
+    }
 
     // Get real OS info from state if available
     let os_info = self.machine_state.as_ref().and_then(|s| s.os_info.as_ref());
 
-    // Image section - use real OS info
+    // Image/OS section - runtime info about the VM's operating system
     let image_info = if let Some(os) = os_info {
       vec![
         ("Distro", os.pretty_name.clone()),
@@ -337,35 +272,8 @@ impl MachineDetail {
       ]
     };
 
-    // Settings section
-    let mut settings_info = vec![
-      ("CPUs", machine.cpus.to_string()),
-      ("Memory (Configured)", format!("{:.0} GB", machine.memory_gb())),
-      ("Disk (Configured)", format!("{:.0} GB", machine.disk_gb())),
-      ("Driver", machine.display_driver()),
-      ("Mount Type", machine.display_mount_type()),
-      ("Runtime", machine.runtime.to_string()),
-    ];
-
-    if let Some(socket) = &machine.docker_socket {
-      settings_info.push(("Docker Socket", socket.clone()));
-    }
-
-    // Network info
-    let mut network_info = Vec::new();
-    if let Some(addr) = &machine.address {
-      network_info.push(("IP Address", addr.clone()));
-    }
-    if let Some(hostname) = &machine.hostname {
-      network_info.push(("Hostname", hostname.clone()));
-    }
-    network_info.push((
-      "SSH Agent",
-      if machine.ssh_agent { "Enabled" } else { "Disabled" }.to_string(),
-    ));
-    if machine.rosetta {
-      network_info.push(("Rosetta", "Enabled".to_string()));
-    }
+    // Get cache size (global Colima info)
+    let cache_size = crate::colima::ColimaClient::cache_size().unwrap_or_else(|_| "Unknown".to_string());
 
     let mut container = v_flex()
       .flex_1()
@@ -374,32 +282,240 @@ impl MachineDetail {
       .gap(px(12.))
       .child(Self::render_section(None, basic_info, cx))
       .child(Self::render_version_section(&version_info, cx))
-      .child(Self::render_section(Some("Image"), image_info, cx))
-      .child(Self::render_section(Some("Settings"), settings_info, cx));
+      .child(Self::render_section(Some("Operating System"), image_info, cx))
+      .child(Self::render_section(
+        Some("System"),
+        vec![("Cache Size", cache_size)],
+        cx,
+      ));
 
-    // Add Kubernetes section if enabled
+    // Kubernetes status section with icon (if enabled)
     if machine.kubernetes {
-      container = container.child(self.render_kubernetes_section(machine, cx));
-    }
-
-    // Add network section if we have info
-    if !network_info.is_empty() {
-      container = container.child(Self::render_section(Some("Network"), network_info, cx));
+      let is_k8s_running = machine.status.is_running();
+      container = container.child(
+        v_flex()
+          .gap(px(1.))
+          .child(
+            div()
+              .py(px(8.))
+              .text_sm()
+              .font_weight(gpui::FontWeight::MEDIUM)
+              .text_color(colors.foreground)
+              .child("Kubernetes"),
+          )
+          .child(
+            div().bg(colors.background).rounded(px(8.)).child(
+              h_flex()
+                .w_full()
+                .px(px(16.))
+                .py(px(12.))
+                .items_center()
+                .gap(px(12.))
+                .child(
+                  Icon::new(AppIcon::Kubernetes)
+                    .size(px(16.))
+                    .text_color(if is_k8s_running {
+                      colors.success
+                    } else {
+                      colors.muted_foreground
+                    }),
+                )
+                .child(
+                  div()
+                    .text_sm()
+                    .text_color(colors.secondary_foreground)
+                    .child("K3s Cluster"),
+                )
+                .child(
+                  div()
+                    .px(px(8.))
+                    .py(px(2.))
+                    .rounded(px(4.))
+                    .bg(if is_k8s_running {
+                      colors.success.opacity(0.15)
+                    } else {
+                      colors.muted_foreground.opacity(0.15)
+                    })
+                    .text_xs()
+                    .font_weight(gpui::FontWeight::MEDIUM)
+                    .text_color(if is_k8s_running {
+                      colors.success
+                    } else {
+                      colors.muted_foreground
+                    })
+                    .child(if is_k8s_running { "Running" } else { "Stopped" }),
+                ),
+            ),
+          ),
+      );
     }
 
     container
   }
 
-  fn render_kubernetes_section(&self, machine: &ColimaVm, cx: &App) -> gpui::Div {
-    let colors = &cx.theme().colors;
-    let is_machine_running = machine.status.is_running();
-    // K8s is running when the machine is running and kubernetes is enabled
-    let is_k8s_running = is_machine_running && machine.kubernetes;
-    let machine_name = machine.name.clone();
+  fn render_config_tab(&self, machine: &ColimaVm, cx: &App) -> gpui::Div {
+    let config = self.machine_state.as_ref().and_then(|s| s.config.as_ref());
+    let ssh_config = self.machine_state.as_ref().and_then(|s| s.ssh_config.as_ref());
 
-    let on_k8s_start = self.on_k8s_start.clone();
-    let on_k8s_stop = self.on_k8s_stop.clone();
-    let on_k8s_reset = self.on_k8s_reset.clone();
+    let mut container = v_flex().flex_1().w_full().p(px(16.)).gap(px(16.));
+
+    // Resources section - CPU, Memory, Disk
+    let resources = vec![
+      ("CPUs", machine.cpus.to_string()),
+      ("Memory", format!("{:.0} GB", machine.memory_gb())),
+      ("Disk", format!("{:.0} GB", machine.disk_gb())),
+    ];
+    container = container.child(Self::render_section(Some("Resources"), resources, cx));
+
+    // VM Settings section - Driver, Runtime, Mount Type, etc.
+    let mut vm_settings = vec![
+      ("VM Type", machine.display_driver()),
+      ("Runtime", machine.runtime.to_string()),
+      ("Mount Type", machine.display_mount_type()),
+      ("Architecture", machine.arch.display_name().to_string()),
+    ];
+    if machine.rosetta {
+      vm_settings.push(("Rosetta", "Enabled".to_string()));
+    }
+    vm_settings.push((
+      "SSH Agent",
+      if machine.ssh_agent { "Enabled" } else { "Disabled" }.to_string(),
+    ));
+    container = container.child(Self::render_section(Some("VM Settings"), vm_settings, cx));
+
+    // Mounts section (from config file)
+    if let Some(cfg) = config {
+      if !cfg.mounts.is_empty() {
+        container = container.child(Self::render_mounts_section(cfg, cx));
+      }
+
+      // Environment variables
+      if !cfg.env.is_empty() {
+        container = container.child(Self::render_environment_section(cfg, cx));
+      }
+
+      // Network configuration
+      let net = &cfg.network;
+      let mut network_config = vec![
+        ("Mode", net.mode.to_string()),
+        ("Interface", net.interface.clone()),
+        ("Address", if net.address { "Enabled" } else { "Disabled" }.to_string()),
+      ];
+      if !net.dns.is_empty() {
+        network_config.push(("DNS", net.dns.join(", ")));
+      }
+      container = container.child(Self::render_section(Some("Network"), network_config, cx));
+
+      // Kubernetes configuration (if enabled)
+      if cfg.kubernetes.enabled || machine.kubernetes {
+        let k8s = &cfg.kubernetes;
+        let mut k8s_config = vec![("Port", k8s.port.to_string())];
+        if !k8s.version.is_empty() {
+          k8s_config.push(("Version", k8s.version.clone()));
+        }
+        if !k8s.k3s_args.is_empty() {
+          k8s_config.push(("K3s Args", k8s.k3s_args.join(" ")));
+        }
+        container = container.child(Self::render_section(Some("Kubernetes"), k8s_config, cx));
+      }
+
+      // Provision scripts
+      if !cfg.provision.is_empty() {
+        container = container.child(Self::render_provision_section(&machine.name, cfg, cx));
+      }
+    }
+
+    // SSH Config section with copy button
+    if let Some(ssh_cfg) = ssh_config {
+      container = container.child(self.render_ssh_config_section(ssh_cfg, cx));
+    }
+
+    container
+  }
+
+  fn render_provision_section(machine_name: &str, config: &crate::colima::ColimaConfig, cx: &App) -> gpui::Div {
+    let colors = &cx.theme().colors;
+
+    v_flex()
+      .gap(px(4.))
+      .child(
+        h_flex()
+          .w_full()
+          .py(px(8.))
+          .items_center()
+          .gap(px(8.))
+          .child(
+            Icon::new(IconName::SquareTerminal)
+              .size(px(14.))
+              .text_color(colors.muted_foreground),
+          )
+          .child(
+            div()
+              .text_sm()
+              .font_weight(gpui::FontWeight::MEDIUM)
+              .text_color(colors.foreground)
+              .child("Provision Scripts"),
+          ),
+      )
+      .child(div().bg(colors.background).rounded(px(8.)).overflow_hidden().children(
+        config.provision.iter().enumerate().map(|(i, script)| {
+          let mode_text = script.mode.to_string();
+          let is_root = script.mode == crate::colima::ProvisionMode::System;
+          let script_content = script.script.clone();
+          let name = machine_name.to_string();
+
+          let mut row = h_flex()
+            .w_full()
+            .px(px(16.))
+            .py(px(12.))
+            .items_center()
+            .justify_between()
+            .child(
+              h_flex()
+                .gap(px(12.))
+                .items_center()
+                .child(
+                  div()
+                    .px(px(8.))
+                    .py(px(2.))
+                    .rounded(px(4.))
+                    .bg(colors.primary.opacity(0.15))
+                    .text_xs()
+                    .text_color(colors.primary)
+                    .child(mode_text),
+                )
+                .child(
+                  div()
+                    .max_w(px(300.))
+                    .text_xs()
+                    .font_family("monospace")
+                    .text_color(colors.foreground)
+                    .overflow_hidden()
+                    .text_ellipsis()
+                    .child(script.script.lines().next().unwrap_or("").to_string()),
+                ),
+            )
+            .child(
+              Button::new(("run-script", i))
+                .label("Run")
+                .xsmall()
+                .ghost()
+                .on_click(move |_ev, _window, cx| {
+                  crate::services::run_provision_script(name.clone(), script_content.clone(), is_root, cx);
+                }),
+            );
+
+          if i > 0 {
+            row = row.border_t_1().border_color(colors.border);
+          }
+
+          row
+        }),
+      ))
+  }
+
+  fn render_mounts_section(config: &crate::colima::ColimaConfig, cx: &App) -> gpui::Div {
+    let colors = &cx.theme().colors;
 
     v_flex()
       .gap(px(1.))
@@ -409,276 +525,188 @@ impl MachineDetail {
           .text_sm()
           .font_weight(gpui::FontWeight::MEDIUM)
           .text_color(colors.foreground)
-          .child("Kubernetes"),
+          .child("Mounts"),
+      )
+      .child(div().bg(colors.background).rounded(px(8.)).overflow_hidden().children(
+        config.mounts.iter().enumerate().map(|(i, mount)| {
+          let mut row = h_flex()
+            .w_full()
+            .px(px(16.))
+            .py(px(12.))
+            .items_center()
+            .justify_between()
+            .child(
+              h_flex()
+                .gap(px(8.))
+                .items_center()
+                .child(
+                  Icon::new(IconName::Folder)
+                    .size(px(14.))
+                    .text_color(colors.muted_foreground),
+                )
+                .child(
+                  div()
+                    .text_sm()
+                    .text_color(colors.foreground)
+                    .child(mount.location.clone()),
+                ),
+            )
+            .child(
+              div()
+                .px(px(8.))
+                .py(px(2.))
+                .rounded(px(4.))
+                .bg(if mount.writable {
+                  colors.warning.opacity(0.15)
+                } else {
+                  colors.muted_foreground.opacity(0.15)
+                })
+                .text_xs()
+                .text_color(if mount.writable {
+                  colors.warning
+                } else {
+                  colors.muted_foreground
+                })
+                .child(if mount.writable { "read-write" } else { "read-only" }),
+            );
+
+          if i > 0 {
+            row = row.border_t_1().border_color(colors.border);
+          }
+
+          row
+        }),
+      ))
+  }
+
+  fn render_environment_section(config: &crate::colima::ColimaConfig, cx: &App) -> gpui::Div {
+    let colors = &cx.theme().colors;
+
+    let env_rows: Vec<(&str, String)> = config.env.iter().map(|(k, v)| (k.as_str(), v.clone())).collect();
+
+    v_flex()
+      .gap(px(1.))
+      .child(
+        div()
+          .py(px(8.))
+          .text_sm()
+          .font_weight(gpui::FontWeight::MEDIUM)
+          .text_color(colors.foreground)
+          .child("Environment Variables"),
+      )
+      .child(div().bg(colors.background).rounded(px(8.)).overflow_hidden().children(
+        env_rows.into_iter().enumerate().map(|(i, (key, value))| {
+          let mut row = h_flex()
+            .w_full()
+            .px(px(16.))
+            .py(px(12.))
+            .items_center()
+            .justify_between()
+            .child(
+              div()
+                .text_sm()
+                .font_family("monospace")
+                .text_color(colors.primary)
+                .child(key.to_string()),
+            )
+            .child(
+              div()
+                .text_sm()
+                .text_color(colors.foreground)
+                .max_w(px(300.))
+                .overflow_hidden()
+                .text_ellipsis()
+                .child(value),
+            );
+
+          if i > 0 {
+            row = row.border_t_1().border_color(colors.border);
+          }
+
+          row
+        }),
+      ))
+  }
+
+  fn render_ssh_config_section(&self, ssh_config: &str, cx: &App) -> gpui::Div {
+    let colors = &cx.theme().colors;
+    let on_copy = self.on_copy.clone();
+    let config_to_copy = ssh_config.to_string();
+
+    v_flex()
+      .gap(px(4.))
+      .child(
+        h_flex()
+          .w_full()
+          .py(px(8.))
+          .items_center()
+          .justify_between()
+          .child(
+            h_flex()
+              .gap(px(8.))
+              .items_center()
+              .child(
+                Icon::new(IconName::Settings)
+                  .size(px(14.))
+                  .text_color(colors.muted_foreground),
+              )
+              .child(
+                div()
+                  .text_sm()
+                  .font_weight(gpui::FontWeight::MEDIUM)
+                  .text_color(colors.foreground)
+                  .child("SSH Config"),
+              ),
+          )
+          .child(
+            Button::new("copy-ssh")
+              .icon(Icon::new(IconName::Copy))
+              .ghost()
+              .xsmall()
+              .tooltip("Copy to clipboard")
+              .when_some(on_copy, |btn, cb| {
+                btn.on_click(move |_ev, window, cx| {
+                  cb(&config_to_copy, window, cx);
+                })
+              }),
+          ),
       )
       .child(
         div()
           .bg(colors.background)
           .rounded(px(8.))
+          .p(px(12.))
           .overflow_hidden()
-          // Status row with all actions
           .child(
-            h_flex()
-              .w_full()
-              .px(px(16.))
-              .py(px(12.))
-              .items_center()
-              .justify_between()
-              .child(
-                h_flex()
-                  .gap(px(8.))
-                  .items_center()
-                  .child(
-                    Icon::new(AppIcon::Kubernetes)
-                      .size(px(16.))
-                      .text_color(if is_k8s_running { colors.success } else { colors.muted_foreground }),
-                  )
-                  .child(
-                    div()
-                      .text_sm()
-                      .text_color(colors.secondary_foreground)
-                      .child("K3s Cluster"),
-                  )
-                  .child(
-                    div()
-                      .px(px(8.))
-                      .py(px(2.))
-                      .rounded(px(4.))
-                      .bg(if is_k8s_running {
-                        colors.success.opacity(0.15)
-                      } else {
-                        colors.muted_foreground.opacity(0.15)
-                      })
-                      .text_xs()
-                      .font_weight(gpui::FontWeight::MEDIUM)
-                      .text_color(if is_k8s_running { colors.success } else { colors.muted_foreground })
-                      .child(if is_k8s_running { "Running" } else { "Stopped" }),
-                  ),
-              )
-              // Action buttons on the right
-              .child(
-                h_flex()
-                  .gap(px(8.))
-                  .items_center()
-                  // When K8s is running: show Reset and Stop buttons
-                  .when(is_k8s_running, |el| {
-                    let name_reset = machine_name.clone();
-                    let name_stop = machine_name.clone();
-                    let on_reset = on_k8s_reset.clone();
-                    let on_stop = on_k8s_stop.clone();
-                    el.child(
-                      Button::new("k8s-reset")
-                        .label("Reset")
-                        .xsmall()
-                        .ghost()
-                        .when_some(on_reset, |btn, cb| {
-                          btn.on_click(move |_ev, window, cx| {
-                            cb(&name_reset, window, cx);
-                          })
-                        }),
-                    )
-                    .child(
-                      Button::new("k8s-stop")
-                        .label("Stop")
-                        .xsmall()
-                        .ghost()
-                        .when_some(on_stop, |btn, cb| {
-                          btn.on_click(move |_ev, window, cx| {
-                            cb(&name_stop, window, cx);
-                          })
-                        }),
-                    )
-                  })
-                  // When K8s is NOT running but machine IS running: show Start button
-                  .when(!is_k8s_running && is_machine_running, |el| {
-                    let name = machine_name.clone();
-                    let on_start = on_k8s_start.clone();
-                    el.child(
-                      Button::new("k8s-start")
-                        .label("Start")
-                        .xsmall()
-                        .primary()
-                        .when_some(on_start, |btn, cb| {
-                          btn.on_click(move |_ev, window, cx| {
-                            cb(&name, window, cx);
-                          })
-                        }),
-                    )
-                  })
-                  // When machine is NOT running: show informational message
-                  .when(!is_machine_running, |el| {
-                    el.child(
-                      div()
-                        .text_xs()
-                        .text_color(colors.muted_foreground)
-                        .child("Start machine first"),
-                    )
-                  }),
-              ),
+            div()
+              .text_xs()
+              .font_family("monospace")
+              .text_color(colors.foreground)
+              .whitespace_nowrap()
+              .overflow_x_hidden()
+              .child(ssh_config.to_string()),
           ),
       )
   }
 
   fn render_version_section(version_info: &ColimaVersionInfo, cx: &App) -> gpui::Div {
-    let colors = &cx.theme().colors;
-
     if !version_info.is_loaded() {
-      return v_flex()
-        .gap(px(1.))
-        .child(
-          div()
-            .py(px(8.))
-            .text_sm()
-            .font_weight(gpui::FontWeight::MEDIUM)
-            .text_color(colors.foreground)
-            .child("Version"),
-        )
-        .child(
-          div()
-            .bg(colors.background)
-            .rounded(px(8.))
-            .px(px(16.))
-            .py(px(12.))
-            .text_sm()
-            .text_color(colors.muted_foreground)
-            .child("Loading..."),
-        );
+      return Self::render_section(Some("Version"), vec![("Colima Version", "Loading...".to_string())], cx);
     }
 
-    v_flex()
-      .gap(px(1.))
-      .child(
-        div()
-          .py(px(8.))
-          .text_sm()
-          .font_weight(gpui::FontWeight::MEDIUM)
-          .text_color(colors.foreground)
-          .child("Version"),
-      )
-      .child(
-        div()
-          .bg(colors.background)
-          .rounded(px(8.))
-          .overflow_hidden()
-          // Colima version row with badge
-          .child(
-            h_flex()
-              .w_full()
-              .px(px(16.))
-              .py(px(12.))
-              .items_center()
-              .justify_between()
-              .child(
-                h_flex()
-                  .gap(px(8.))
-                  .items_center()
-                  .child(
-                    div()
-                      .text_sm()
-                      .text_color(colors.secondary_foreground)
-                      .child("Colima"),
-                  )
-                  .child(Self::render_version_badge(&version_info.version, colors.primary, cx)),
-              )
-              .child(
-                div()
-                  .text_xs()
-                  .font_family("monospace")
-                  .text_color(colors.muted_foreground)
-                  .max_w(px(200.))
-                  .overflow_hidden()
-                  .text_ellipsis()
-                  .child(version_info.git_commit.clone()),
-              ),
-          )
-          // Runtime and Architecture row
-          .child(
-            h_flex()
-              .w_full()
-              .px(px(16.))
-              .py(px(12.))
-              .border_t_1()
-              .border_color(colors.border)
-              .gap(px(24.))
-              .child(
-                h_flex()
-                  .gap(px(8.))
-                  .items_center()
-                  .child(
-                    div()
-                      .text_sm()
-                      .text_color(colors.secondary_foreground)
-                      .child("Runtime"),
-                  )
-                  .child(Self::render_version_badge(&version_info.runtime, colors.success, cx)),
-              )
-              .child(
-                h_flex()
-                  .gap(px(8.))
-                  .items_center()
-                  .child(
-                    div()
-                      .text_sm()
-                      .text_color(colors.secondary_foreground)
-                      .child("Arch"),
-                  )
-                  .child(
-                    div()
-                      .text_sm()
-                      .text_color(colors.foreground)
-                      .child(version_info.arch.clone()),
-                  ),
-              ),
-          )
-          // Docker client/server versions row
-          .when(!version_info.client_version.is_empty(), |el| {
-            el.child(
-              h_flex()
-                .w_full()
-                .px(px(16.))
-                .py(px(12.))
-                .border_t_1()
-                .border_color(colors.border)
-                .gap(px(24.))
-                .child(
-                  h_flex()
-                    .gap(px(8.))
-                    .items_center()
-                    .child(
-                      div()
-                        .text_sm()
-                        .text_color(colors.secondary_foreground)
-                        .child("Client"),
-                    )
-                    .child(Self::render_version_badge(&version_info.client_version, colors.link, cx)),
-                )
-                .child(
-                  h_flex()
-                    .gap(px(8.))
-                    .items_center()
-                    .child(
-                      div()
-                        .text_sm()
-                        .text_color(colors.secondary_foreground)
-                        .child("Server"),
-                    )
-                    .child(Self::render_version_badge(&version_info.server_version, colors.link, cx)),
-                ),
-            )
-          }),
-      )
-  }
+    let mut rows = vec![
+      ("Colima Version", version_info.version.clone()),
+      ("Runtime", version_info.runtime.clone()),
+    ];
 
-  fn render_version_badge(version: &str, color: Hsla, _cx: &App) -> gpui::Div {
-    div()
-      .px(px(8.))
-      .py(px(2.))
-      .rounded(px(4.))
-      .bg(color.opacity(0.15))
-      .text_xs()
-      .font_weight(gpui::FontWeight::MEDIUM)
-      .text_color(color)
-      .child(version.to_string())
+    if !version_info.client_version.is_empty() {
+      rows.push(("Docker Client", version_info.client_version.clone()));
+    }
+    if !version_info.server_version.is_empty() {
+      rows.push(("Docker Server", version_info.server_version.clone()));
+    }
+
+    Self::render_section(Some("Version"), rows, cx)
   }
 
   fn render_processes_tab(&self, cx: &App) -> gpui::Div {
@@ -1375,26 +1403,13 @@ impl MachineDetail {
       return Self::render_empty(cx).into_any_element();
     };
 
-    let is_running = machine.status.is_running();
-    let machine_name = machine.name.clone();
-    let machine_name_for_stop = machine_name.clone();
-    let machine_name_for_restart = machine_name.clone();
-    let machine_name_for_delete = machine_name.clone();
-
-    let on_start = self.on_start.clone();
-    let on_stop = self.on_stop.clone();
-    let on_restart = self.on_restart.clone();
-    let on_delete = self.on_delete.clone();
-    let on_edit = self.on_edit.clone();
     let on_tab_change = self.on_tab_change.clone();
-    let machine_for_edit = machine.clone();
 
-    // Toolbar with tabs and actions
+    // Toolbar with just tabs - no action buttons
     let toolbar = h_flex()
       .w_full()
       .px(px(16.))
       .py(px(8.))
-      .gap(px(12.))
       .items_center()
       .border_b_1()
       .border_color(colors.border)
@@ -1415,79 +1430,6 @@ impl MachineDetail {
                 }
               })
           })),
-      )
-      .child(
-        h_flex()
-          .gap(px(8.))
-          .when(!is_running, |el| {
-            let on_start = on_start.clone();
-            let name = machine_name.clone();
-            el.child(
-              Button::new("start")
-                .icon(Icon::new(AppIcon::Play))
-                .ghost()
-                .small()
-                .on_click(move |_ev, window, cx| {
-                  if let Some(ref cb) = on_start {
-                    cb(&name, window, cx);
-                  }
-                }),
-            )
-          })
-          .when(is_running, |el| {
-            let on_stop = on_stop.clone();
-            let name = machine_name_for_stop.clone();
-            el.child(
-              Button::new("stop")
-                .icon(Icon::new(AppIcon::Stop))
-                .ghost()
-                .small()
-                .on_click(move |_ev, window, cx| {
-                  if let Some(ref cb) = on_stop {
-                    cb(&name, window, cx);
-                  }
-                }),
-            )
-          })
-          .child({
-            let on_restart = on_restart.clone();
-            let name = machine_name_for_restart.clone();
-            Button::new("restart")
-              .icon(Icon::new(AppIcon::Restart))
-              .ghost()
-              .small()
-              .on_click(move |_ev, window, cx| {
-                if let Some(ref cb) = on_restart {
-                  cb(&name, window, cx);
-                }
-              })
-          })
-          .child({
-            let on_edit = on_edit.clone();
-            let machine = machine_for_edit.clone();
-            Button::new("edit")
-              .icon(Icon::new(IconName::Settings))
-              .ghost()
-              .small()
-              .on_click(move |_ev, window, cx| {
-                if let Some(ref cb) = on_edit {
-                  cb(&machine, window, cx);
-                }
-              })
-          })
-          .child({
-            let on_delete = on_delete.clone();
-            let name = machine_name_for_delete.clone();
-            Button::new("delete")
-              .icon(Icon::new(AppIcon::Trash))
-              .ghost()
-              .small()
-              .on_click(move |_ev, window, cx| {
-                if let Some(ref cb) = on_delete {
-                  cb(&name, window, cx);
-                }
-              })
-          }),
       );
 
     // Terminal, Logs, and Files tabs need full height without scroll (they handle their own scrolling)
@@ -1514,8 +1456,10 @@ impl MachineDetail {
       result = result.child(div().flex_1().min_h_0().w_full().overflow_hidden().child(content));
     } else {
       let content = match self.active_tab {
+        MachineDetailTab::Config => self.render_config_tab(machine, cx),
         MachineDetailTab::Processes => self.render_processes_tab(cx),
         MachineDetailTab::Stats => self.render_stats_tab(cx),
+        // Info and any future tabs default to Info tab
         _ => self.render_info_tab(machine, cx),
       };
       result = result.child(

@@ -223,6 +223,7 @@ impl MachinesView {
     let machine_name = name.to_string();
     let machine_name2 = machine_name.clone();
     let machine_name3 = machine_name.clone();
+    let machine_name4 = machine_name.clone();
 
     // Load OS info and stats in background
     cx.spawn(async move |this, cx| {
@@ -298,6 +299,31 @@ impl MachinesView {
         this.machine_tab_state.files = files;
         this.machine_tab_state.files_loading = false;
         this.machine_tab_state.current_path = "/".to_string();
+        cx.notify();
+      });
+    })
+    .detach();
+
+    // Load config and SSH config in background
+    cx.spawn(async move |this, cx| {
+      let (config, ssh_config) = cx
+        .background_executor()
+        .spawn(async move {
+          use crate::colima::ColimaClient;
+          let name_opt = if machine_name4 == "default" {
+            None
+          } else {
+            Some(machine_name4.as_str())
+          };
+          let config = ColimaClient::read_config(name_opt).ok();
+          let ssh_config = ColimaClient::ssh_config(name_opt).ok();
+          (config, ssh_config)
+        })
+        .await;
+
+      let _ = this.update(cx, |this, cx| {
+        this.machine_tab_state.config = config;
+        this.machine_tab_state.ssh_config = ssh_config;
         cx.notify();
       });
     })
@@ -628,34 +654,9 @@ impl Render for MachinesView {
       .on_symlink_click(cx.listener(|this, path: &str, window, cx| {
         this.on_symlink_follow(path, window, cx);
       }))
-      .on_start(cx.listener(|_this, name: &str, _window, cx| {
-        services::start_machine(name.to_string(), cx);
-      }))
-      .on_stop(cx.listener(|_this, name: &str, _window, cx| {
-        services::stop_machine(name.to_string(), cx);
-      }))
-      .on_restart(cx.listener(|_this, name: &str, _window, cx| {
-        services::restart_machine(name.to_string(), cx);
-      }))
-      .on_delete(cx.listener(|this, name: &str, _window, cx| {
-        services::delete_machine(name.to_string(), cx);
-        this.docker_state.update(cx, |s, _| s.set_selection(Selection::None));
-        this.active_tab = MachineDetailTab::Info;
-        this.terminal_view = None;
-        cx.notify();
-      }))
-      .on_edit(cx.listener(|_this, machine: &ColimaVm, window, cx| {
-        Self::show_edit_dialog(machine, window, cx);
-      }))
-      .on_k8s_start(cx.listener(|_this, name: &str, _window, cx| {
-        services::kubernetes_start(name.to_string(), cx);
-      }))
-      .on_k8s_stop(cx.listener(|_this, name: &str, _window, cx| {
-        services::kubernetes_stop(name.to_string(), cx);
-      }))
-      .on_k8s_reset(cx.listener(|_this, name: &str, _window, cx| {
-        services::kubernetes_reset(name.to_string(), cx);
-      }));
+      .on_copy(|text: &str, _window, cx| {
+        cx.write_to_clipboard(gpui::ClipboardItem::new_string(text.to_string()));
+      });
 
     div()
       .size_full()

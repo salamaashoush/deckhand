@@ -580,3 +580,202 @@ pub fn set_default_machine(name: String, has_kubernetes: bool, cx: &mut App) {
   })
   .detach();
 }
+
+/// Update the container runtime in a machine
+pub fn update_machine_runtime(name: String, cx: &mut App) {
+  let task_id = start_task(cx, format!("Updating runtime on '{name}'..."));
+  let name_clone = name.clone();
+
+  let disp = dispatcher(cx);
+
+  cx.spawn(async move |cx| {
+    let result = cx
+      .background_executor()
+      .spawn(async move {
+        let name_opt = if name == "default" { None } else { Some(name.as_str()) };
+        ColimaClient::update(name_opt)
+      })
+      .await;
+
+    cx.update(|cx| match result {
+      Ok(()) => {
+        complete_task(cx, task_id);
+        disp.update(cx, |_, cx| {
+          cx.emit(DispatcherEvent::TaskCompleted {
+            message: format!("Runtime updated on '{name_clone}'"),
+          });
+        });
+      }
+      Err(e) => {
+        fail_task(cx, task_id, e.to_string());
+        disp.update(cx, |_, cx| {
+          cx.emit(DispatcherEvent::TaskFailed {
+            error: format!("Failed to update runtime on '{name_clone}': {e}"),
+          });
+        });
+      }
+    })
+  })
+  .detach();
+}
+
+/// Update runtime on all running machines
+pub fn update_all_machines(cx: &mut App) {
+  let task_id = start_task(cx, "Updating all machines...".to_string());
+
+  let state = docker_state(cx);
+  let disp = dispatcher(cx);
+
+  // Get list of running machines
+  let machines = state.read(cx).colima_vms.clone();
+  let running_machines: Vec<_> = machines
+    .iter()
+    .filter(|m| m.status.is_running())
+    .map(|m| m.name.clone())
+    .collect();
+
+  if running_machines.is_empty() {
+    complete_task(cx, task_id);
+    disp.update(cx, |_, cx| {
+      cx.emit(DispatcherEvent::TaskCompleted {
+        message: "No running machines to update".to_string(),
+      });
+    });
+    return;
+  }
+
+  let count = running_machines.len();
+
+  cx.spawn(async move |cx| {
+    let mut success_count = 0;
+    let mut failed_names = Vec::new();
+
+    for name in running_machines {
+      let name_clone = name.clone();
+      let result = cx
+        .background_executor()
+        .spawn(async move {
+          let name_opt = if name == "default" { None } else { Some(name.as_str()) };
+          ColimaClient::update(name_opt)
+        })
+        .await;
+
+      if result.is_ok() {
+        success_count += 1;
+      } else {
+        failed_names.push(name_clone);
+      }
+    }
+
+    cx.update(|cx| {
+      if failed_names.is_empty() {
+        complete_task(cx, task_id);
+        disp.update(cx, |_, cx| {
+          cx.emit(DispatcherEvent::TaskCompleted {
+            message: format!("Updated {success_count} machine(s)"),
+          });
+        });
+      } else {
+        fail_task(cx, task_id, format!("Failed: {}", failed_names.join(", ")));
+        disp.update(cx, |_, cx| {
+          cx.emit(DispatcherEvent::TaskFailed {
+            error: format!("Updated {success_count}/{count}, failed: {}", failed_names.join(", ")),
+          });
+        });
+      }
+    })
+  })
+  .detach();
+}
+
+/// Prune Colima cached assets
+pub fn prune_cache(all: bool, cx: &mut App) {
+  let task_id = start_task(
+    cx,
+    if all {
+      "Pruning all cached assets...".to_string()
+    } else {
+      "Pruning cached assets...".to_string()
+    },
+  );
+
+  let disp = dispatcher(cx);
+
+  cx.spawn(async move |cx| {
+    let result = cx
+      .background_executor()
+      .spawn(async move { ColimaClient::prune(all, true) })
+      .await;
+
+    cx.update(|cx| match result {
+      Ok(output) => {
+        complete_task(cx, task_id);
+        let msg = if output.trim().is_empty() {
+          "Cache pruned successfully".to_string()
+        } else {
+          format!("Cache pruned: {}", output.trim())
+        };
+        disp.update(cx, |_, cx| {
+          cx.emit(DispatcherEvent::TaskCompleted { message: msg });
+        });
+      }
+      Err(e) => {
+        fail_task(cx, task_id, e.to_string());
+        disp.update(cx, |_, cx| {
+          cx.emit(DispatcherEvent::TaskFailed {
+            error: format!("Failed to prune cache: {e}"),
+          });
+        });
+      }
+    })
+  })
+  .detach();
+}
+
+/// Get SSH config for a machine (returns config string via callback)
+#[allow(dead_code)]
+pub fn get_ssh_config(name: &str, _cx: &mut App) -> Option<String> {
+  let name_opt = if name == "default" { None } else { Some(name) };
+  ColimaClient::ssh_config(name_opt).ok()
+}
+
+/// Run a provision script on a machine
+pub fn run_provision_script(name: String, script: String, as_root: bool, cx: &mut App) {
+  let task_id = start_task(cx, format!("Running script on '{name}'..."));
+  let name_clone = name.clone();
+
+  let disp = dispatcher(cx);
+
+  cx.spawn(async move |cx| {
+    let result = cx
+      .background_executor()
+      .spawn(async move {
+        let name_opt = if name == "default" { None } else { Some(name.as_str()) };
+        ColimaClient::run_provision_script(name_opt, &script, as_root)
+      })
+      .await;
+
+    cx.update(|cx| match result {
+      Ok(output) => {
+        complete_task(cx, task_id);
+        let msg = if output.trim().is_empty() {
+          format!("Script executed on '{name_clone}'")
+        } else {
+          format!("Script output:\n{}", output.trim())
+        };
+        disp.update(cx, |_, cx| {
+          cx.emit(DispatcherEvent::TaskCompleted { message: msg });
+        });
+      }
+      Err(e) => {
+        fail_task(cx, task_id, e.to_string());
+        disp.update(cx, |_, cx| {
+          cx.emit(DispatcherEvent::TaskFailed {
+            error: format!("Script failed on '{name_clone}': {e}"),
+          });
+        });
+      }
+    })
+  })
+  .detach();
+}

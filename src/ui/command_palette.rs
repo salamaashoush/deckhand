@@ -71,9 +71,13 @@ pub enum PaletteAction {
   StartDefaultMachine,
   StopDefaultMachine,
   RestartDefaultMachine,
+  UpdateDefaultMachineRuntime,
+  UpdateAllMachines,
+  PruneMachineCache,
 
   // Kubernetes actions
   ResetKubernetes,
+  EnableKubernetes,
 
   // UI actions
   ShowShortcuts,
@@ -347,6 +351,30 @@ impl CommandPalette {
         icon: IconName::Redo,
         action: PaletteAction::RestartDefaultMachine,
       },
+      PaletteCommand {
+        id: "update-default-machine",
+        label: "Update Default Machine Runtime",
+        shortcut: None,
+        category: "Colima",
+        icon: IconName::ArrowUp,
+        action: PaletteAction::UpdateDefaultMachineRuntime,
+      },
+      PaletteCommand {
+        id: "update-all-machines",
+        label: "Update All Machine Runtimes",
+        shortcut: None,
+        category: "Colima",
+        icon: IconName::ArrowUp,
+        action: PaletteAction::UpdateAllMachines,
+      },
+      PaletteCommand {
+        id: "prune-machine-cache",
+        label: "Prune Colima Cache",
+        shortcut: None,
+        category: "Colima",
+        icon: IconName::Delete,
+        action: PaletteAction::PruneMachineCache,
+      },
       // === KUBERNETES ACTIONS ===
       PaletteCommand {
         id: "create-deployment",
@@ -371,6 +399,14 @@ impl CommandPalette {
         category: "Kubernetes",
         icon: IconName::Redo,
         action: PaletteAction::ResetKubernetes,
+      },
+      PaletteCommand {
+        id: "enable-kubernetes",
+        label: "Enable Kubernetes on Default Machine",
+        shortcut: None,
+        category: "Kubernetes",
+        icon: IconName::Plus,
+        action: PaletteAction::EnableKubernetes,
       },
       // === UI ACTIONS ===
       PaletteCommand {

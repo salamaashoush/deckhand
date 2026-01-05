@@ -579,6 +579,111 @@ impl ColimaClient {
     let content = serde_yaml::to_string(config)?;
     std::fs::write(&path, content).map_err(|e| anyhow!("Failed to write config at {}: {e}", path.display()))
   }
+
+  /// Update the container runtime in the VM
+  /// This updates Docker/containerd to the latest version
+  pub fn update(name: Option<&str>) -> Result<()> {
+    let mut cmd = colima_cmd();
+    cmd.arg("update");
+
+    if let Some(n) = name
+      && n != "default"
+    {
+      cmd.arg("--profile").arg(n);
+    }
+
+    let output = cmd.stdout(Stdio::piped()).stderr(Stdio::piped()).output()?;
+
+    if !output.status.success() {
+      let stderr = String::from_utf8_lossy(&output.stderr);
+      return Err(anyhow!("colima update failed: {stderr}"));
+    }
+
+    Ok(())
+  }
+
+  /// Prune cached downloaded assets (VM images, etc.)
+  pub fn prune(all: bool, force: bool) -> Result<String> {
+    let mut cmd = colima_cmd();
+    cmd.arg("prune");
+
+    if all {
+      cmd.arg("--all");
+    }
+
+    if force {
+      cmd.arg("--force");
+    }
+
+    let output = cmd.stdout(Stdio::piped()).stderr(Stdio::piped()).output()?;
+
+    if !output.status.success() {
+      let stderr = String::from_utf8_lossy(&output.stderr);
+      return Err(anyhow!("colima prune failed: {stderr}"));
+    }
+
+    Ok(String::from_utf8_lossy(&output.stdout).to_string())
+  }
+
+  /// Get the SSH configuration for a profile
+  /// Returns the SSH config that can be added to ~/.ssh/config
+  pub fn ssh_config(name: Option<&str>) -> Result<String> {
+    let mut cmd = colima_cmd();
+    cmd.arg("ssh-config");
+
+    if let Some(n) = name
+      && n != "default"
+    {
+      cmd.arg("--profile").arg(n);
+    }
+
+    let output = cmd.stdout(Stdio::piped()).stderr(Stdio::piped()).output()?;
+
+    if !output.status.success() {
+      let stderr = String::from_utf8_lossy(&output.stderr);
+      return Err(anyhow!("colima ssh-config failed: {stderr}"));
+    }
+
+    Ok(String::from_utf8_lossy(&output.stdout).to_string())
+  }
+
+  /// Get the cache directory size
+  pub fn cache_size() -> Result<String> {
+    let home = dirs::home_dir().unwrap_or_default();
+    let cache_path = home.join(".colima").join("_wrapper");
+
+    if !cache_path.exists() {
+      return Ok("0 B".to_string());
+    }
+
+    // Use du to get directory size
+    let output = std::process::Command::new("du")
+      .args(["-sh", &cache_path.to_string_lossy()])
+      .stdout(Stdio::piped())
+      .stderr(Stdio::piped())
+      .output()?;
+
+    if output.status.success() {
+      let stdout = String::from_utf8_lossy(&output.stdout);
+      // Format: "123M\t/path/to/dir"
+      if let Some(size) = stdout.split_whitespace().next() {
+        return Ok(size.to_string());
+      }
+    }
+
+    Ok("Unknown".to_string())
+  }
+
+  /// Run a provision script in the VM
+  pub fn run_provision_script(name: Option<&str>, script: &str, as_root: bool) -> Result<String> {
+    let command = if as_root {
+      format!("sudo sh -c '{}'", script.replace('\'', "'\"'\"'"))
+    } else {
+      format!("sh -c '{}'", script.replace('\'', "'\"'\"'"))
+    };
+
+    Self::run_command(name, &command)
+  }
 }
 
 impl Default for ColimaClient {
