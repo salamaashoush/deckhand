@@ -1,7 +1,7 @@
 use anyhow::{Result, anyhow};
 use std::process::Stdio;
 
-use super::{ColimaStartOptions, ColimaVm, MountType, VmArch, VmFileEntry, VmOsInfo, VmRuntime, VmStatus, VmType};
+use super::{ColimaConfig, ColimaVm, MountType, VmArch, VmFileEntry, VmOsInfo, VmRuntime, VmStatus, VmType};
 use crate::utils::colima_cmd;
 
 pub struct ColimaClient;
@@ -229,67 +229,40 @@ impl ColimaClient {
     Self::parse_status_json(&stdout, name)
   }
 
-  /// Start a VM with options
-  pub fn start(options: &ColimaStartOptions) -> Result<()> {
+  /// Start a VM using config file approach
+  /// This writes the config to the YAML file then starts colima
+  pub fn start_with_config(profile: &str, config: &ColimaConfig) -> Result<()> {
+    // Write config to the profile's config file
+    let profile_opt = if profile == "default" { None } else { Some(profile) };
+    Self::write_config(profile_opt, config)?;
+
+    // Start with the profile (colima will read from config file)
     let mut cmd = colima_cmd();
     cmd.arg("start");
 
-    if let Some(name) = &options.name
-      && name != "default"
+    if profile != "default" {
+      cmd.arg("--profile").arg(profile);
+    }
+
+    let output = cmd.stdout(Stdio::piped()).stderr(Stdio::piped()).output()?;
+
+    if !output.status.success() {
+      let stderr = String::from_utf8_lossy(&output.stderr);
+      return Err(anyhow!("colima start failed: {stderr}"));
+    }
+
+    Ok(())
+  }
+
+  /// Start an existing VM (uses its existing config file)
+  pub fn start_existing(name: Option<&str>) -> Result<()> {
+    let mut cmd = colima_cmd();
+    cmd.arg("start");
+
+    if let Some(n) = name
+      && n != "default"
     {
-      cmd.arg("--profile").arg(name);
-    }
-
-    if let Some(cpus) = options.cpus {
-      cmd.arg("--cpu").arg(cpus.to_string());
-    }
-
-    if let Some(memory) = options.memory {
-      cmd.arg("--memory").arg(memory.to_string());
-    }
-
-    if let Some(disk) = options.disk {
-      cmd.arg("--disk").arg(disk.to_string());
-    }
-
-    if let Some(runtime) = options.runtime {
-      cmd.arg("--runtime").arg(runtime.to_string());
-    }
-
-    if options.kubernetes {
-      cmd.arg("--kubernetes");
-    }
-
-    if let Some(arch) = options.arch {
-      cmd.arg("--arch").arg(arch.to_string());
-    }
-
-    if let Some(vm_type) = options.vm_type {
-      cmd.arg("--vm-type").arg(vm_type.to_string());
-    }
-
-    if let Some(mount_type) = options.mount_type {
-      cmd.arg("--mount-type").arg(mount_type.to_string());
-    }
-
-    if options.network_address {
-      cmd.arg("--network-address");
-    }
-
-    if options.rosetta {
-      cmd.arg("--vz-rosetta");
-    }
-
-    if options.ssh_agent {
-      cmd.arg("--ssh-agent");
-    }
-
-    if let Some(hostname) = &options.hostname {
-      cmd.arg("--hostname").arg(hostname);
-    }
-
-    if options.edit {
-      cmd.arg("--edit");
+      cmd.arg("--profile").arg(n);
     }
 
     let output = cmd.stdout(Stdio::piped()).stderr(Stdio::piped()).output()?;
@@ -572,6 +545,39 @@ impl ColimaClient {
       name,
       "ps aux --sort=-%mem 2>/dev/null | head -20 || echo 'Unable to get processes'",
     )
+  }
+
+  /// Get the config file path for a profile
+  pub fn config_path(name: Option<&str>) -> std::path::PathBuf {
+    let home = dirs::home_dir().unwrap_or_default();
+    let profile = name.unwrap_or("default");
+    home.join(".colima").join(profile).join("colima.yaml")
+  }
+
+  /// Read the configuration for a profile
+  pub fn read_config(name: Option<&str>) -> Result<ColimaConfig> {
+    let path = Self::config_path(name);
+    if !path.exists() {
+      return Ok(ColimaConfig::default());
+    }
+
+    let content =
+      std::fs::read_to_string(&path).map_err(|e| anyhow!("Failed to read config at {}: {e}", path.display()))?;
+
+    serde_yaml::from_str(&content).map_err(|e| anyhow!("Failed to parse config: {e}"))
+  }
+
+  /// Write the configuration for a profile
+  pub fn write_config(name: Option<&str>, config: &ColimaConfig) -> Result<()> {
+    let path = Self::config_path(name);
+
+    // Ensure directory exists
+    if let Some(parent) = path.parent() {
+      std::fs::create_dir_all(parent)?;
+    }
+
+    let content = serde_yaml::to_string(config)?;
+    std::fs::write(&path, content).map_err(|e| anyhow!("Failed to write config at {}: {e}", path.display()))
   }
 }
 
