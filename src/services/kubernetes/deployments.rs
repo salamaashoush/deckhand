@@ -10,7 +10,18 @@ use super::pods::refresh_pods;
 
 /// Refresh deployments list
 pub fn refresh_deployments(cx: &mut App) {
+  use crate::state::LoadState;
+
   let state = docker_state(cx);
+
+  // Only show loading state on initial load, not on background refreshes
+  let is_initial_load = matches!(state.read(cx).deployments_state, LoadState::NotLoaded);
+  if is_initial_load {
+    state.update(cx, |state, _cx| {
+      state.set_deployments_loading();
+    });
+  }
+
   let selected_ns = state.read(cx).selected_namespace.clone();
   let namespace = if selected_ns == "all" { None } else { Some(selected_ns) };
 
@@ -20,15 +31,26 @@ pub fn refresh_deployments(cx: &mut App) {
   });
 
   cx.spawn(async move |cx| {
-    let result = tokio_task.await.unwrap_or_else(|e| Err(anyhow::anyhow!("{e}")));
+    let result = tokio_task.await;
 
     cx.update(|cx| {
-      if let Ok(deployments) = result {
-        state.update(cx, |state, cx| {
+      state.update(cx, |state, cx| match result {
+        Ok(Ok(deployments)) => {
+          state.set_k8s_error(None);
           state.set_deployments(deployments);
           cx.emit(StateChanged::DeploymentsUpdated);
-        });
-      }
+        }
+        Ok(Err(e)) => {
+          let error_msg = e.to_string();
+          state.set_k8s_error(Some(error_msg.clone()));
+          state.set_deployments_error(error_msg);
+        }
+        Err(join_err) => {
+          let error_msg = join_err.to_string();
+          state.set_k8s_error(Some(error_msg.clone()));
+          state.set_deployments_error(error_msg);
+        }
+      });
     })
   })
   .detach();

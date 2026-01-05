@@ -9,10 +9,20 @@ use super::super::core::{DispatcherEvent, dispatcher};
 
 /// Refresh the list of pods
 pub fn refresh_pods(cx: &mut App) {
+  use crate::state::LoadState;
+
   let state = docker_state(cx);
 
   let namespace = state.read(cx).selected_namespace.clone();
   let ns_filter = if namespace == "all" { None } else { Some(namespace) };
+
+  // Only show loading state on initial load, not on background refreshes
+  let is_initial_load = matches!(state.read(cx).pods_state, LoadState::NotLoaded);
+  if is_initial_load {
+    state.update(cx, |state, _cx| {
+      state.set_pods_loading();
+    });
+  }
 
   let tokio_task = Tokio::spawn(cx, async move {
     // Check both client creation AND actual API connectivity
@@ -20,22 +30,37 @@ pub fn refresh_pods(cx: &mut App) {
       Ok(client) => {
         // Only set available=true if we can actually reach the K8s API
         match client.list_pods(ns_filter.as_deref()).await {
-          Ok(pods) => (true, pods),
-          Err(_) => (false, vec![]),
+          Ok(pods) => Ok((true, pods)),
+          Err(e) => Err(format!("Failed to list pods: {e}")),
         }
       }
-      Err(_) => (false, vec![]),
+      Err(e) => Err(format!("Failed to connect to Kubernetes: {e}")),
     }
   });
 
   cx.spawn(async move |cx| {
     let result = tokio_task.await;
-    let (available, pods) = result.unwrap_or((false, vec![]));
 
     cx.update(|cx| {
       state.update(cx, |state, cx| {
-        state.set_k8s_available(available);
-        state.set_pods(pods);
+        match result {
+          Ok(Ok((available, pods))) => {
+            state.set_k8s_available(available);
+            state.set_k8s_error(None);
+            state.set_pods(pods);
+          }
+          Ok(Err(e)) => {
+            state.set_k8s_available(false);
+            state.set_k8s_error(Some(e.clone()));
+            state.set_pods_error(e);
+          }
+          Err(join_err) => {
+            let error_msg = join_err.to_string();
+            state.set_k8s_available(false);
+            state.set_k8s_error(Some(error_msg.clone()));
+            state.set_pods_error(error_msg);
+          }
+        }
         cx.emit(StateChanged::PodsUpdated);
       });
     })

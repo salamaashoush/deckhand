@@ -3,11 +3,12 @@ use chrono::Utc;
 use k8s_openapi::api::apps::v1::{Deployment, ReplicaSet};
 use k8s_openapi::api::core::v1::{Namespace, Pod};
 use kube::{
-  Api, Client,
+  Api, Client, Config,
   api::{DeleteParams, ListParams, LogParams, Patch, PatchParams, PostParams},
 };
 use serde_json::json;
 use std::fmt::Write as _;
+use std::time::Duration;
 
 use k8s_openapi::api::core::v1::Service;
 
@@ -20,11 +21,65 @@ pub struct KubeClient {
 
 impl KubeClient {
   /// Create a new `KubeClient` from default kubeconfig
+  /// Includes VPN-aware fallback: if the server URL uses a VM IP that's unreachable,
+  /// automatically tries localhost with the same port
   pub async fn new() -> Result<Self> {
-    let client = Client::try_default()
+    // First, try to load the config to inspect the server URL
+    let config = Config::infer().await.context("Failed to load kubeconfig")?;
+
+    // Check if the server URL uses a non-localhost IP (likely VM IP)
+    let server_url = config.cluster_url.to_string();
+    let is_vm_ip = is_non_localhost_ip(&server_url);
+
+    // Try connecting with a short timeout first
+    let client_result = Self::try_connect_with_timeout(config.clone(), Duration::from_secs(5)).await;
+
+    match client_result {
+      Ok(client) => Ok(Self { client }),
+      Err(e) if is_vm_ip => {
+        // Connection failed and we're using a VM IP - try localhost fallback
+        tracing::warn!(
+          "Failed to connect to K8s at {} (possibly VPN blocking VM IP), trying localhost fallback: {}",
+          server_url,
+          e
+        );
+
+        if let Some(localhost_config) = try_localhost_fallback(&server_url, config) {
+          let client =
+            Client::try_from(localhost_config).context("Failed to create K8s client with localhost fallback")?;
+
+          // Test the connection
+          Self::test_connection(&client).await?;
+
+          tracing::info!("Successfully connected to K8s via localhost fallback");
+          Ok(Self { client })
+        } else {
+          Err(e).context("Failed to connect to Kubernetes. VM IP unreachable (VPN may be blocking local network)")
+        }
+      }
+      Err(e) => Err(e).context("Failed to create Kubernetes client"),
+    }
+  }
+
+  /// Try to connect with a timeout
+  async fn try_connect_with_timeout(config: Config, timeout: Duration) -> Result<Client> {
+    let client = Client::try_from(config)?;
+
+    // Test the connection with timeout
+    tokio::time::timeout(timeout, Self::test_connection(&client))
       .await
-      .context("Failed to create Kubernetes client. Is a cluster configured?")?;
-    Ok(Self { client })
+      .map_err(|_| anyhow::anyhow!("Connection timeout"))?
+      .map(|()| client)
+  }
+
+  /// Test if we can actually reach the K8s API
+  async fn test_connection(client: &Client) -> Result<()> {
+    // Try to get API versions - lightweight call to verify connectivity
+    let _ = client
+      .apiserver_version()
+      .await
+      .context("Cannot reach K8s API server")?;
+    Ok(())
   }
 
   /// List all namespaces
@@ -678,4 +733,47 @@ pub struct ServicePortConfig {
   pub target_port: i32,
   pub node_port: i32,
   pub protocol: String,
+}
+
+// ============================================================================
+// VPN-aware connection helpers
+// ============================================================================
+
+/// Check if a URL uses a non-localhost IP address (likely a VM IP)
+fn is_non_localhost_ip(url: &str) -> bool {
+  // Parse the URL to extract the host
+  if let Ok(parsed) = url::Url::parse(url)
+    && let Some(host) = parsed.host_str()
+  {
+    // Check if it's an IP address that's not localhost
+    if let Ok(ip) = host.parse::<std::net::IpAddr>() {
+      return !ip.is_loopback();
+    }
+    // Also check for "localhost" hostname
+    return host != "localhost";
+  }
+  false
+}
+
+/// Try to create a localhost fallback config
+/// Extracts the port from the original URL and creates a new config pointing to localhost
+fn try_localhost_fallback(original_url: &str, mut config: Config) -> Option<Config> {
+  // Parse the original URL to get the port
+  let parsed = url::Url::parse(original_url).ok()?;
+  let port = parsed.port()?;
+
+  // Create new localhost URL with same port and scheme
+  let scheme = parsed.scheme();
+  let localhost_url = format!("{scheme}://127.0.0.1:{port}");
+
+  tracing::info!("Trying localhost fallback: {}", localhost_url);
+
+  // Update the config with localhost URL
+  config.cluster_url = localhost_url.parse().ok()?;
+
+  // For self-signed certs, we may need to accept invalid certs when switching to localhost
+  // since the cert is likely issued for the VM IP, not localhost
+  config.accept_invalid_certs = true;
+
+  Some(config)
 }
