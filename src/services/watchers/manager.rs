@@ -7,7 +7,7 @@ use std::collections::HashSet;
 use std::sync::Arc;
 use std::time::Duration;
 
-use gpui::App;
+use gpui::{App, Global};
 use tokio::sync::RwLock;
 
 use super::WatcherControl;
@@ -61,7 +61,7 @@ impl WatcherManager {
 
       watcher
         .watch(docker_control, |event| {
-          tracing::debug!("Docker event: {:?}", event.resource_type());
+          tracing::debug!("Docker event: {event:?}");
           docker_tx.send(event.resource_type());
         })
         .await;
@@ -108,7 +108,6 @@ impl WatcherManager {
   }
 
   /// Stop all watchers gracefully
-  #[allow(dead_code)]
   pub fn stop(&self) {
     self.control.stop();
   }
@@ -143,5 +142,24 @@ fn refresh_resources(resources: &HashSet<ResourceType>, cx: &mut App) {
         crate::services::refresh_machines(cx);
       }
     }
+  }
+}
+
+/// Global wrapper for `WatcherManager`
+struct GlobalWatcherManager(WatcherManager);
+
+impl Global for GlobalWatcherManager {}
+
+/// Start watchers and store globally
+pub fn start_watchers(docker_client: Arc<RwLock<Option<DockerClient>>>, cx: &mut App) {
+  let manager = WatcherManager::new(docker_client);
+  manager.start(cx);
+  cx.set_global(GlobalWatcherManager(manager));
+}
+
+/// Stop all watchers gracefully (call on app shutdown)
+pub fn stop_watchers(cx: &App) {
+  if let Some(global) = cx.try_global::<GlobalWatcherManager>() {
+    global.0.stop();
   }
 }

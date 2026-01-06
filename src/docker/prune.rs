@@ -115,3 +115,78 @@ impl DockerClient {
     })
   }
 }
+
+#[cfg(test)]
+mod tests {
+  use super::*;
+
+  #[test]
+  fn test_prune_result_default() {
+    let result = PruneResult::default();
+    assert!(result.containers_deleted.is_empty());
+    assert!(result.images_deleted.is_empty());
+    assert!(result.volumes_deleted.is_empty());
+    assert!(result.networks_deleted.is_empty());
+    assert!(result.pods_deleted.is_empty());
+    assert!(result.deployments_deleted.is_empty());
+    assert!(result.services_deleted.is_empty());
+    assert_eq!(result.space_reclaimed, 0);
+  }
+
+  #[test]
+  fn test_prune_result_display_space_reclaimed() {
+    let result = PruneResult {
+      space_reclaimed: 1024 * 1024 * 500, // 500 MiB
+      ..Default::default()
+    };
+    assert_eq!(result.display_space_reclaimed(), "500.0 MiB");
+
+    let small = PruneResult {
+      space_reclaimed: 1024, // 1 KiB
+      ..Default::default()
+    };
+    assert_eq!(small.display_space_reclaimed(), "1.0 KiB");
+
+    let zero = PruneResult::default();
+    assert_eq!(zero.display_space_reclaimed(), "0 B");
+  }
+
+  #[test]
+  fn test_prune_result_total_items_deleted() {
+    let result = PruneResult {
+      containers_deleted: vec!["c1".to_string(), "c2".to_string()],
+      images_deleted: vec!["i1".to_string()],
+      volumes_deleted: vec!["v1".to_string(), "v2".to_string(), "v3".to_string()],
+      networks_deleted: vec!["n1".to_string()],
+      pods_deleted: vec!["p1".to_string()],
+      deployments_deleted: vec![],
+      services_deleted: vec!["s1".to_string(), "s2".to_string()],
+      space_reclaimed: 0,
+    };
+    assert_eq!(result.total_items_deleted(), 10);
+  }
+
+  #[test]
+  fn test_prune_result_is_empty() {
+    let empty = PruneResult::default();
+    assert!(empty.is_empty());
+
+    let with_containers = PruneResult {
+      containers_deleted: vec!["c1".to_string()],
+      ..Default::default()
+    };
+    assert!(!with_containers.is_empty());
+
+    let with_images = PruneResult {
+      images_deleted: vec!["i1".to_string()],
+      ..Default::default()
+    };
+    assert!(!with_images.is_empty());
+
+    let with_k8s = PruneResult {
+      pods_deleted: vec!["pod1".to_string()],
+      ..Default::default()
+    };
+    assert!(!with_k8s.is_empty());
+  }
+}

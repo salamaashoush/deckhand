@@ -314,3 +314,111 @@ impl Render for CreateVolumeDialog {
             .child(labels_section)
   }
 }
+
+#[cfg(test)]
+mod tests {
+  use super::*;
+
+  #[test]
+  fn test_volume_driver_label() {
+    assert_eq!(VolumeDriver::Local.label(), "local");
+  }
+
+  #[test]
+  fn test_volume_driver_as_docker_arg() {
+    assert_eq!(VolumeDriver::Local.as_docker_arg(), "local");
+  }
+
+  #[test]
+  fn test_volume_driver_all() {
+    let drivers = VolumeDriver::all();
+    assert!(!drivers.is_empty());
+    assert!(drivers.contains(&VolumeDriver::Local));
+  }
+
+  #[test]
+  fn test_volume_driver_default() {
+    assert_eq!(VolumeDriver::default(), VolumeDriver::Local);
+  }
+
+  #[test]
+  fn test_create_volume_options_default() {
+    let options = CreateVolumeOptions::default();
+    assert!(options.name.is_empty());
+    assert_eq!(options.driver, VolumeDriver::Local);
+    assert!(options.labels.is_empty());
+  }
+
+  #[test]
+  fn test_create_volume_options_with_values() {
+    let options = CreateVolumeOptions {
+      name: "my-volume".to_string(),
+      driver: VolumeDriver::Local,
+      labels: vec![("env".to_string(), "prod".to_string())],
+    };
+    assert_eq!(options.name, "my-volume");
+    assert_eq!(options.labels.len(), 1);
+    assert_eq!(options.labels[0], ("env".to_string(), "prod".to_string()));
+  }
+
+  // GPUI Component Tests
+
+  #[gpui::test]
+  fn test_create_volume_dialog_creation(cx: &mut gpui::TestAppContext) {
+    let dialog = cx.new(CreateVolumeDialog::new);
+
+    dialog.read_with(cx, |dialog, _| {
+      assert!(dialog.name_input.is_none()); // Not initialized until render
+      assert!(dialog.driver_select.is_none());
+      assert!(dialog.labels.is_empty());
+    });
+  }
+
+  #[gpui::test]
+  fn test_create_volume_dialog_add_labels(cx: &mut gpui::TestAppContext) {
+    let dialog = cx.new(CreateVolumeDialog::new);
+
+    // Add labels directly
+    dialog.update(cx, |dialog, _| {
+      dialog.labels.push(("key1".to_string(), "value1".to_string()));
+      dialog.labels.push(("key2".to_string(), "value2".to_string()));
+    });
+
+    dialog.read_with(cx, |dialog, _| {
+      assert_eq!(dialog.labels.len(), 2);
+      assert_eq!(dialog.labels[0].0, "key1");
+      assert_eq!(dialog.labels[1].0, "key2");
+    });
+  }
+
+  #[gpui::test]
+  fn test_create_volume_dialog_remove_label(cx: &mut gpui::TestAppContext) {
+    let dialog = cx.new(CreateVolumeDialog::new);
+
+    // Add then remove labels
+    dialog.update(cx, |dialog, _| {
+      dialog.labels.push(("keep".to_string(), "1".to_string()));
+      dialog.labels.push(("remove".to_string(), "2".to_string()));
+      dialog.labels.push(("also-keep".to_string(), "3".to_string()));
+    });
+
+    dialog.update(cx, |dialog, _| {
+      dialog.labels.remove(1); // Remove "remove"
+    });
+
+    dialog.read_with(cx, |dialog, _| {
+      assert_eq!(dialog.labels.len(), 2);
+      assert_eq!(dialog.labels[0].0, "keep");
+      assert_eq!(dialog.labels[1].0, "also-keep");
+    });
+  }
+
+  #[gpui::test]
+  fn test_volume_driver_select_item_title(cx: &mut gpui::TestAppContext) {
+    cx.update(|_| {
+      let driver = VolumeDriver::Local;
+      assert_eq!(driver.title().as_ref(), "local");
+      assert_eq!(*driver.value(), VolumeDriver::Local);
+    });
+  }
+}

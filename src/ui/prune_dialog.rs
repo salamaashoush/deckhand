@@ -476,3 +476,226 @@ impl Render for PruneDialog {
             .child(result_section)
   }
 }
+
+#[cfg(test)]
+mod tests {
+  use super::*;
+
+  #[test]
+  fn test_prune_options_default() {
+    let options = PruneOptions::default();
+    assert!(!options.prune_containers);
+    assert!(!options.prune_images);
+    assert!(!options.prune_volumes);
+    assert!(!options.prune_networks);
+    assert!(!options.images_dangling_only);
+    assert!(!options.prune_k8s_pods);
+    assert!(!options.prune_k8s_pods_all);
+    assert!(!options.prune_k8s_deployments);
+    assert!(!options.prune_k8s_services);
+  }
+
+  #[test]
+  fn test_prune_options_is_empty() {
+    let empty = PruneOptions::default();
+    assert!(empty.is_empty());
+
+    let with_containers = PruneOptions {
+      prune_containers: true,
+      ..Default::default()
+    };
+    assert!(!with_containers.is_empty());
+
+    let with_images = PruneOptions {
+      prune_images: true,
+      ..Default::default()
+    };
+    assert!(!with_images.is_empty());
+
+    let with_volumes = PruneOptions {
+      prune_volumes: true,
+      ..Default::default()
+    };
+    assert!(!with_volumes.is_empty());
+
+    let with_networks = PruneOptions {
+      prune_networks: true,
+      ..Default::default()
+    };
+    assert!(!with_networks.is_empty());
+
+    let with_k8s_pods = PruneOptions {
+      prune_k8s_pods: true,
+      ..Default::default()
+    };
+    assert!(!with_k8s_pods.is_empty());
+
+    let with_k8s_deployments = PruneOptions {
+      prune_k8s_deployments: true,
+      ..Default::default()
+    };
+    assert!(!with_k8s_deployments.is_empty());
+
+    let with_k8s_services = PruneOptions {
+      prune_k8s_services: true,
+      ..Default::default()
+    };
+    assert!(!with_k8s_services.is_empty());
+  }
+
+  #[test]
+  fn test_prune_options_multiple_selections() {
+    let options = PruneOptions {
+      prune_containers: true,
+      prune_images: true,
+      prune_networks: true,
+      images_dangling_only: true,
+      ..Default::default()
+    };
+    assert!(!options.is_empty());
+    assert!(options.prune_containers);
+    assert!(options.prune_images);
+    assert!(options.prune_networks);
+    assert!(options.images_dangling_only);
+    assert!(!options.prune_volumes);
+  }
+
+  #[test]
+  fn test_prune_result_display_default() {
+    let display = PruneResultDisplay::default();
+    assert!(display.result.is_none());
+    assert!(!display.is_loading);
+    assert!(display.error.is_none());
+  }
+
+  // GPUI Component Tests
+
+  #[gpui::test]
+  fn test_prune_dialog_creation(cx: &mut gpui::TestAppContext) {
+    let dialog = cx.new(PruneDialog::new);
+
+    // Verify initial state
+    dialog.read_with(cx, |dialog, _| {
+      let options = dialog.get_options();
+      assert!(options.is_empty());
+      assert!(!dialog.result_display.is_loading);
+      assert!(dialog.result_display.result.is_none());
+      assert!(dialog.result_display.error.is_none());
+    });
+  }
+
+  #[gpui::test]
+  fn test_prune_dialog_set_loading(cx: &mut gpui::TestAppContext) {
+    let dialog = cx.new(PruneDialog::new);
+
+    // Set loading state
+    dialog.update(cx, |dialog, _| {
+      dialog.set_loading(true);
+    });
+
+    dialog.read_with(cx, |dialog, _| {
+      assert!(dialog.result_display.is_loading);
+      assert!(dialog.result_display.result.is_none());
+      assert!(dialog.result_display.error.is_none());
+    });
+
+    // Clear loading state
+    dialog.update(cx, |dialog, _| {
+      dialog.set_loading(false);
+    });
+
+    dialog.read_with(cx, |dialog, _| {
+      assert!(!dialog.result_display.is_loading);
+    });
+  }
+
+  #[gpui::test]
+  fn test_prune_dialog_set_result(cx: &mut gpui::TestAppContext) {
+    let dialog = cx.new(PruneDialog::new);
+
+    // Set a result
+    let result = PruneResult {
+      containers_deleted: vec!["container1".to_string()],
+      images_deleted: vec!["image1".to_string(), "image2".to_string()],
+      space_reclaimed: 1024 * 1024 * 100,
+      ..Default::default()
+    };
+
+    dialog.update(cx, |dialog, _| {
+      dialog.set_result(result.clone());
+    });
+
+    dialog.read_with(cx, |dialog, _| {
+      assert!(!dialog.result_display.is_loading);
+      assert!(dialog.result_display.error.is_none());
+      let stored_result = dialog.result_display.result.as_ref().unwrap();
+      assert_eq!(stored_result.containers_deleted.len(), 1);
+      assert_eq!(stored_result.images_deleted.len(), 2);
+      assert_eq!(stored_result.space_reclaimed, 1024 * 1024 * 100);
+    });
+  }
+
+  #[gpui::test]
+  fn test_prune_dialog_set_error(cx: &mut gpui::TestAppContext) {
+    let dialog = cx.new(PruneDialog::new);
+
+    // Set loading first
+    dialog.update(cx, |dialog, _| {
+      dialog.set_loading(true);
+    });
+
+    // Then set error (simulating failed prune)
+    dialog.update(cx, |dialog, _| {
+      dialog.set_error("Connection refused".to_string());
+    });
+
+    dialog.read_with(cx, |dialog, _| {
+      assert!(!dialog.result_display.is_loading);
+      assert!(dialog.result_display.result.is_none());
+      assert_eq!(dialog.result_display.error, Some("Connection refused".to_string()));
+    });
+  }
+
+  #[gpui::test]
+  fn test_prune_dialog_options_mutation(cx: &mut gpui::TestAppContext) {
+    let dialog = cx.new(PruneDialog::new);
+
+    // Mutate options directly (simulating user interaction)
+    dialog.update(cx, |dialog, _| {
+      dialog.options.prune_containers = true;
+      dialog.options.prune_images = true;
+      dialog.options.images_dangling_only = true;
+    });
+
+    dialog.read_with(cx, |dialog, _| {
+      let options = dialog.get_options();
+      assert!(!options.is_empty());
+      assert!(options.prune_containers);
+      assert!(options.prune_images);
+      assert!(options.images_dangling_only);
+      assert!(!options.prune_volumes);
+      assert!(!options.prune_networks);
+    });
+  }
+
+  #[gpui::test]
+  fn test_prune_dialog_loading_clears_previous_state(cx: &mut gpui::TestAppContext) {
+    let dialog = cx.new(PruneDialog::new);
+
+    // First set an error
+    dialog.update(cx, |dialog, _| {
+      dialog.set_error("Previous error".to_string());
+    });
+
+    // Then start loading - should clear error
+    dialog.update(cx, |dialog, _| {
+      dialog.set_loading(true);
+    });
+
+    dialog.read_with(cx, |dialog, _| {
+      assert!(dialog.result_display.is_loading);
+      assert!(dialog.result_display.error.is_none());
+      assert!(dialog.result_display.result.is_none());
+    });
+  }
+}

@@ -45,9 +45,9 @@ impl Backoff {
   }
 }
 
-/// Events emitted by the Docker watcher
+/// Events emitted by the Docker watcher (fields used via Debug for logging)
 #[derive(Debug, Clone)]
-#[allow(dead_code, clippy::enum_variant_names)]
+#[allow(clippy::enum_variant_names, dead_code)]
 pub enum DockerResourceEvent {
   /// A container was created, started, stopped, removed, etc.
   ContainerChanged { id: String, action: String },

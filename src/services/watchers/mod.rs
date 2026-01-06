@@ -15,7 +15,7 @@ mod kubernetes;
 mod machines;
 mod manager;
 
-pub use manager::WatcherManager;
+pub use manager::{start_watchers, stop_watchers};
 
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};

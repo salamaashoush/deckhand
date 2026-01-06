@@ -107,3 +107,493 @@ pub fn extract_compose_projects(containers: &[ContainerInfo]) -> Vec<ComposeProj
 
   result
 }
+
+#[cfg(test)]
+mod tests {
+  use super::*;
+
+  fn make_container(name: &str, image: &str, state: ContainerState, labels: HashMap<String, String>) -> ContainerInfo {
+    ContainerInfo {
+      id: format!("{name}-id-123456789012"),
+      name: name.to_string(),
+      image: image.to_string(),
+      image_id: "sha256:abc".to_string(),
+      state,
+      status: format!("{state}"),
+      created: None,
+      ports: vec![],
+      labels,
+      command: None,
+      size_rw: None,
+      size_root_fs: None,
+    }
+  }
+
+  fn make_compose_labels(project: &str, service: &str) -> HashMap<String, String> {
+    HashMap::from([
+      (COMPOSE_PROJECT_LABEL.to_string(), project.to_string()),
+      (COMPOSE_SERVICE_LABEL.to_string(), service.to_string()),
+    ])
+  }
+
+  // ComposeProject tests
+
+  #[test]
+  fn test_compose_project_container_count() {
+    let project = ComposeProject {
+      name: "test".to_string(),
+      services: vec![
+        ComposeService {
+          name: "web".to_string(),
+          container_id: "abc".to_string(),
+          image: "nginx".to_string(),
+          state: ContainerState::Running,
+        },
+        ComposeService {
+          name: "db".to_string(),
+          container_id: "def".to_string(),
+          image: "postgres".to_string(),
+          state: ContainerState::Running,
+        },
+      ],
+    };
+    assert_eq!(project.container_count(), 2);
+  }
+
+  #[test]
+  fn test_compose_project_running_count() {
+    let project = ComposeProject {
+      name: "test".to_string(),
+      services: vec![
+        ComposeService {
+          name: "web".to_string(),
+          container_id: "abc".to_string(),
+          image: "nginx".to_string(),
+          state: ContainerState::Running,
+        },
+        ComposeService {
+          name: "db".to_string(),
+          container_id: "def".to_string(),
+          image: "postgres".to_string(),
+          state: ContainerState::Exited,
+        },
+        ComposeService {
+          name: "cache".to_string(),
+          container_id: "ghi".to_string(),
+          image: "redis".to_string(),
+          state: ContainerState::Running,
+        },
+      ],
+    };
+    assert_eq!(project.running_count(), 2);
+  }
+
+  #[test]
+  fn test_compose_project_is_all_running() {
+    // All running
+    let all_running = ComposeProject {
+      name: "test".to_string(),
+      services: vec![
+        ComposeService {
+          name: "web".to_string(),
+          container_id: "abc".to_string(),
+          image: "nginx".to_string(),
+          state: ContainerState::Running,
+        },
+        ComposeService {
+          name: "db".to_string(),
+          container_id: "def".to_string(),
+          image: "postgres".to_string(),
+          state: ContainerState::Running,
+        },
+      ],
+    };
+    assert!(all_running.is_all_running());
+
+    // One not running
+    let partial = ComposeProject {
+      name: "test".to_string(),
+      services: vec![
+        ComposeService {
+          name: "web".to_string(),
+          container_id: "abc".to_string(),
+          image: "nginx".to_string(),
+          state: ContainerState::Running,
+        },
+        ComposeService {
+          name: "db".to_string(),
+          container_id: "def".to_string(),
+          image: "postgres".to_string(),
+          state: ContainerState::Exited,
+        },
+      ],
+    };
+    assert!(!partial.is_all_running());
+
+    // Empty project
+    let empty = ComposeProject {
+      name: "empty".to_string(),
+      services: vec![],
+    };
+    assert!(!empty.is_all_running());
+  }
+
+  #[test]
+  fn test_compose_project_is_all_stopped() {
+    // All stopped
+    let all_stopped = ComposeProject {
+      name: "test".to_string(),
+      services: vec![
+        ComposeService {
+          name: "web".to_string(),
+          container_id: "abc".to_string(),
+          image: "nginx".to_string(),
+          state: ContainerState::Exited,
+        },
+        ComposeService {
+          name: "db".to_string(),
+          container_id: "def".to_string(),
+          image: "postgres".to_string(),
+          state: ContainerState::Exited,
+        },
+      ],
+    };
+    assert!(all_stopped.is_all_stopped());
+
+    // One running
+    let partial = ComposeProject {
+      name: "test".to_string(),
+      services: vec![
+        ComposeService {
+          name: "web".to_string(),
+          container_id: "abc".to_string(),
+          image: "nginx".to_string(),
+          state: ContainerState::Running,
+        },
+        ComposeService {
+          name: "db".to_string(),
+          container_id: "def".to_string(),
+          image: "postgres".to_string(),
+          state: ContainerState::Exited,
+        },
+      ],
+    };
+    assert!(!partial.is_all_stopped());
+
+    // Empty project is considered all stopped
+    let empty = ComposeProject {
+      name: "empty".to_string(),
+      services: vec![],
+    };
+    assert!(empty.is_all_stopped());
+  }
+
+  #[test]
+  fn test_compose_project_status_display() {
+    // All running
+    let all_running = ComposeProject {
+      name: "test".to_string(),
+      services: vec![
+        ComposeService {
+          name: "web".to_string(),
+          container_id: "abc".to_string(),
+          image: "nginx".to_string(),
+          state: ContainerState::Running,
+        },
+        ComposeService {
+          name: "db".to_string(),
+          container_id: "def".to_string(),
+          image: "postgres".to_string(),
+          state: ContainerState::Running,
+        },
+      ],
+    };
+    assert_eq!(all_running.status_display(), "2/2 running");
+
+    // All stopped
+    let all_stopped = ComposeProject {
+      name: "test".to_string(),
+      services: vec![
+        ComposeService {
+          name: "web".to_string(),
+          container_id: "abc".to_string(),
+          image: "nginx".to_string(),
+          state: ContainerState::Exited,
+        },
+        ComposeService {
+          name: "db".to_string(),
+          container_id: "def".to_string(),
+          image: "postgres".to_string(),
+          state: ContainerState::Exited,
+        },
+      ],
+    };
+    assert_eq!(all_stopped.status_display(), "0/2 stopped");
+
+    // Partial
+    let partial = ComposeProject {
+      name: "test".to_string(),
+      services: vec![
+        ComposeService {
+          name: "web".to_string(),
+          container_id: "abc".to_string(),
+          image: "nginx".to_string(),
+          state: ContainerState::Running,
+        },
+        ComposeService {
+          name: "db".to_string(),
+          container_id: "def".to_string(),
+          image: "postgres".to_string(),
+          state: ContainerState::Exited,
+        },
+        ComposeService {
+          name: "cache".to_string(),
+          container_id: "ghi".to_string(),
+          image: "redis".to_string(),
+          state: ContainerState::Exited,
+        },
+      ],
+    };
+    assert_eq!(partial.status_display(), "1/3 running");
+
+    // Empty project
+    let empty = ComposeProject {
+      name: "empty".to_string(),
+      services: vec![],
+    };
+    assert_eq!(empty.status_display(), "0/0 stopped");
+  }
+
+  // ComposeService tests
+
+  #[test]
+  fn test_compose_service_from_container() {
+    let container = make_container("my-app-web-1", "nginx:latest", ContainerState::Running, HashMap::new());
+    let service = ComposeService::from_container(&container, "web");
+
+    assert_eq!(service.name, "web");
+    assert_eq!(service.container_id, container.id);
+    assert_eq!(service.image, "nginx:latest");
+    assert!(service.state.is_running());
+  }
+
+  // extract_compose_projects tests
+
+  #[test]
+  fn test_extract_compose_projects_empty() {
+    let containers: Vec<ContainerInfo> = vec![];
+    let projects = extract_compose_projects(&containers);
+    assert!(projects.is_empty());
+  }
+
+  #[test]
+  fn test_extract_compose_projects_no_compose_labels() {
+    let containers = vec![
+      make_container("standalone", "nginx", ContainerState::Running, HashMap::new()),
+      make_container("another", "redis", ContainerState::Exited, HashMap::new()),
+    ];
+    let projects = extract_compose_projects(&containers);
+    assert!(projects.is_empty());
+  }
+
+  #[test]
+  fn test_extract_compose_projects_single_project() {
+    let containers = vec![
+      make_container(
+        "myapp-web-1",
+        "nginx",
+        ContainerState::Running,
+        make_compose_labels("myapp", "web"),
+      ),
+      make_container(
+        "myapp-db-1",
+        "postgres",
+        ContainerState::Running,
+        make_compose_labels("myapp", "db"),
+      ),
+    ];
+
+    let projects = extract_compose_projects(&containers);
+    assert_eq!(projects.len(), 1);
+    assert_eq!(projects[0].name, "myapp");
+    assert_eq!(projects[0].services.len(), 2);
+  }
+
+  #[test]
+  fn test_extract_compose_projects_multiple_projects() {
+    let containers = vec![
+      make_container(
+        "app1-web-1",
+        "nginx",
+        ContainerState::Running,
+        make_compose_labels("app1", "web"),
+      ),
+      make_container(
+        "app2-api-1",
+        "node",
+        ContainerState::Running,
+        make_compose_labels("app2", "api"),
+      ),
+      make_container(
+        "app1-db-1",
+        "postgres",
+        ContainerState::Exited,
+        make_compose_labels("app1", "db"),
+      ),
+    ];
+
+    let projects = extract_compose_projects(&containers);
+    assert_eq!(projects.len(), 2);
+
+    // Projects should be sorted by name
+    assert_eq!(projects[0].name, "app1");
+    assert_eq!(projects[1].name, "app2");
+
+    // app1 should have 2 services
+    assert_eq!(projects[0].services.len(), 2);
+    // app2 should have 1 service
+    assert_eq!(projects[1].services.len(), 1);
+  }
+
+  #[test]
+  fn test_extract_compose_projects_sorted_by_name() {
+    let containers = vec![
+      make_container(
+        "z-app-web",
+        "nginx",
+        ContainerState::Running,
+        make_compose_labels("z-app", "web"),
+      ),
+      make_container(
+        "a-app-web",
+        "nginx",
+        ContainerState::Running,
+        make_compose_labels("a-app", "web"),
+      ),
+      make_container(
+        "m-app-web",
+        "nginx",
+        ContainerState::Running,
+        make_compose_labels("m-app", "web"),
+      ),
+    ];
+
+    let projects = extract_compose_projects(&containers);
+    assert_eq!(projects.len(), 3);
+    assert_eq!(projects[0].name, "a-app");
+    assert_eq!(projects[1].name, "m-app");
+    assert_eq!(projects[2].name, "z-app");
+  }
+
+  #[test]
+  fn test_extract_compose_projects_services_sorted() {
+    let containers = vec![
+      make_container(
+        "myapp-cache-1",
+        "redis",
+        ContainerState::Running,
+        make_compose_labels("myapp", "cache"),
+      ),
+      make_container(
+        "myapp-web-1",
+        "nginx",
+        ContainerState::Running,
+        make_compose_labels("myapp", "web"),
+      ),
+      make_container(
+        "myapp-api-1",
+        "node",
+        ContainerState::Running,
+        make_compose_labels("myapp", "api"),
+      ),
+    ];
+
+    let projects = extract_compose_projects(&containers);
+    assert_eq!(projects.len(), 1);
+
+    // Services should be sorted by name
+    let service_names: Vec<&str> = projects[0].services.iter().map(|s| s.name.as_str()).collect();
+    assert_eq!(service_names, vec!["api", "cache", "web"]);
+  }
+
+  #[test]
+  fn test_extract_compose_projects_missing_service_label() {
+    // When service label is missing, use container name
+    let labels = HashMap::from([(COMPOSE_PROJECT_LABEL.to_string(), "myapp".to_string())]);
+    let containers = vec![make_container(
+      "myapp-special-1",
+      "nginx",
+      ContainerState::Running,
+      labels,
+    )];
+
+    let projects = extract_compose_projects(&containers);
+    assert_eq!(projects.len(), 1);
+    assert_eq!(projects[0].services[0].name, "myapp-special-1"); // Falls back to container name
+  }
+
+  #[test]
+  fn test_extract_compose_projects_mixed_compose_and_standalone() {
+    let containers = vec![
+      make_container(
+        "myapp-web-1",
+        "nginx",
+        ContainerState::Running,
+        make_compose_labels("myapp", "web"),
+      ),
+      make_container("standalone-nginx", "nginx", ContainerState::Running, HashMap::new()), // No compose labels
+      make_container(
+        "myapp-db-1",
+        "postgres",
+        ContainerState::Running,
+        make_compose_labels("myapp", "db"),
+      ),
+    ];
+
+    let projects = extract_compose_projects(&containers);
+    // Only one project should be extracted (standalone container ignored)
+    assert_eq!(projects.len(), 1);
+    assert_eq!(projects[0].services.len(), 2);
+  }
+
+  #[test]
+  fn test_compose_project_various_states() {
+    // Test with all different container states
+    let project = ComposeProject {
+      name: "test".to_string(),
+      services: vec![
+        ComposeService {
+          name: "running".to_string(),
+          container_id: "a".to_string(),
+          image: "img".to_string(),
+          state: ContainerState::Running,
+        },
+        ComposeService {
+          name: "paused".to_string(),
+          container_id: "b".to_string(),
+          image: "img".to_string(),
+          state: ContainerState::Paused,
+        },
+        ComposeService {
+          name: "restarting".to_string(),
+          container_id: "c".to_string(),
+          image: "img".to_string(),
+          state: ContainerState::Restarting,
+        },
+        ComposeService {
+          name: "exited".to_string(),
+          container_id: "d".to_string(),
+          image: "img".to_string(),
+          state: ContainerState::Exited,
+        },
+      ],
+    };
+
+    // Only Running counts as running
+    assert_eq!(project.running_count(), 1);
+    assert_eq!(project.container_count(), 4);
+    assert!(!project.is_all_running());
+    assert!(!project.is_all_stopped());
+    assert_eq!(project.status_display(), "1/4 running");
+  }
+}

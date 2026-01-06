@@ -33,7 +33,7 @@ pub use kubernetes::*;
 pub use navigation::*;
 pub use prune::*;
 pub use task_manager::*;
-pub use watchers::WatcherManager;
+pub use watchers::stop_watchers;
 
 use gpui::App;
 
@@ -60,10 +60,5 @@ pub fn init_services(cx: &mut App) {
 /// automatically refreshing the UI when resources are added, modified, or deleted.
 pub fn start_watchers(cx: &mut App) {
   let docker_client = docker_client();
-  let watcher_manager = WatcherManager::new(docker_client);
-  watcher_manager.start(cx);
-
-  // Store the manager globally so it stays alive
-  // (The manager's internal tasks are detached so we don't need to hold onto it,
-  // but we could add stop functionality later if needed)
+  watchers::start_watchers(docker_client, cx);
 }

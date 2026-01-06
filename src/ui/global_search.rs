@@ -731,3 +731,84 @@ fn format_size(bytes: i64) -> String {
     format!("{bytes} B")
   }
 }
+
+#[cfg(test)]
+mod tests {
+  use super::*;
+
+  #[test]
+  fn test_format_size_bytes() {
+    assert_eq!(format_size(0), "0 B");
+    assert_eq!(format_size(512), "512 B");
+    assert_eq!(format_size(1023), "1023 B");
+  }
+
+  #[test]
+  fn test_format_size_kilobytes() {
+    assert_eq!(format_size(1024), "1.0 KB");
+    assert_eq!(format_size(1536), "1.5 KB");
+    assert_eq!(format_size(1024 * 500), "500.0 KB");
+  }
+
+  #[test]
+  fn test_format_size_megabytes() {
+    assert_eq!(format_size(1024 * 1024), "1.0 MB");
+    assert_eq!(format_size(1024 * 1024 * 256), "256.0 MB");
+  }
+
+  #[test]
+  fn test_format_size_gigabytes() {
+    assert_eq!(format_size(1024 * 1024 * 1024), "1.0 GB");
+    assert_eq!(format_size(1024 * 1024 * 1024 * 5), "5.0 GB");
+  }
+
+  #[test]
+  fn test_search_result_type_label() {
+    assert_eq!(SearchResultType::Container.label(), "Container");
+    assert_eq!(SearchResultType::Image.label(), "Image");
+    assert_eq!(SearchResultType::Volume.label(), "Volume");
+    assert_eq!(SearchResultType::Network.label(), "Network");
+    assert_eq!(SearchResultType::Pod.label(), "Pod");
+    assert_eq!(SearchResultType::Deployment.label(), "Deployment");
+    assert_eq!(SearchResultType::Service.label(), "Service");
+    assert_eq!(SearchResultType::Machine.label(), "Machine");
+  }
+
+  #[test]
+  fn test_search_result_type_view() {
+    assert_eq!(SearchResultType::Container.view(), CurrentView::Containers);
+    assert_eq!(SearchResultType::Image.view(), CurrentView::Images);
+    assert_eq!(SearchResultType::Volume.view(), CurrentView::Volumes);
+    assert_eq!(SearchResultType::Network.view(), CurrentView::Networks);
+    assert_eq!(SearchResultType::Pod.view(), CurrentView::Pods);
+    assert_eq!(SearchResultType::Deployment.view(), CurrentView::Deployments);
+    assert_eq!(SearchResultType::Service.view(), CurrentView::Services);
+    assert_eq!(SearchResultType::Machine.view(), CurrentView::Machines);
+  }
+
+  #[test]
+  fn test_search_result_type_icon() {
+    // Just verify icons are assigned (don't check exact values)
+    let _ = SearchResultType::Container.icon();
+    let _ = SearchResultType::Image.icon();
+    let _ = SearchResultType::Volume.icon();
+    let _ = SearchResultType::Network.icon();
+    let _ = SearchResultType::Pod.icon();
+    let _ = SearchResultType::Deployment.icon();
+    let _ = SearchResultType::Service.icon();
+    let _ = SearchResultType::Machine.icon();
+  }
+
+  #[test]
+  fn test_search_result_creation() {
+    let result = SearchResult {
+      result_type: SearchResultType::Container,
+      name: "my-nginx".to_string(),
+      subtitle: "nginx:latest - running".to_string(),
+      selection: Selection::Machine("test".to_string()),
+    };
+    assert_eq!(result.name, "my-nginx");
+    assert_eq!(result.subtitle, "nginx:latest - running");
+    assert_eq!(result.result_type, SearchResultType::Container);
+  }
+}

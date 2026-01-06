@@ -622,6 +622,7 @@ impl Render for MachinesView {
     let terminal_view = self.terminal_view.clone();
     let logs_editor = self.logs_editor.clone();
     let file_content_editor = self.file_content_editor.clone();
+    let has_selection = selected_machine.is_some();
 
     // Build detail panel
     let detail = MachineDetail::new()
@@ -663,24 +664,27 @@ impl Render for MachinesView {
       .flex()
       .overflow_hidden()
       .child(
-        // Left: Machine list - fixed width with border
+        // Left: Machine list - fixed width when selected, full width when not
         div()
-          .w(px(320.))
+          .when(has_selection, |el| {
+            el.w(px(320.)).border_r_1().border_color(colors.border)
+          })
+          .when(!has_selection, gpui::Styled::flex_1)
           .h_full()
           .flex_shrink_0()
           .overflow_hidden()
-          .border_r_1()
-          .border_color(colors.border)
           .child(self.machine_list.clone()),
       )
-      .child(
-        // Right: Detail panel - flexible width
-        div()
-          .flex_1()
-          .h_full()
-          .overflow_hidden()
-          .child(detail.render(window, cx)),
-      )
+      .when(has_selection, |el| {
+        el.child(
+          // Right: Detail panel - only shown when selection exists
+          div()
+            .flex_1()
+            .h_full()
+            .overflow_hidden()
+            .child(detail.render(window, cx)),
+        )
+      })
   }
 }
 

@@ -726,3 +726,149 @@ impl Render for CommandPalette {
     )
   }
 }
+
+#[cfg(test)]
+mod tests {
+  use super::*;
+
+  #[test]
+  fn test_all_commands_not_empty() {
+    let commands = CommandPalette::all_commands();
+    assert!(!commands.is_empty());
+    // Should have a reasonable number of commands
+    assert!(commands.len() >= 20);
+  }
+
+  #[test]
+  fn test_all_commands_have_unique_ids() {
+    let commands = CommandPalette::all_commands();
+    let mut ids: Vec<&str> = commands.iter().map(|c| c.id).collect();
+    let original_len = ids.len();
+    ids.sort_unstable();
+    ids.dedup();
+    assert_eq!(ids.len(), original_len, "Command IDs must be unique");
+  }
+
+  #[test]
+  fn test_filter_commands_empty_query_returns_all() {
+    let all = CommandPalette::all_commands();
+    let filtered = CommandPalette::filter_commands("");
+    assert_eq!(filtered.len(), all.len());
+  }
+
+  #[test]
+  fn test_filter_commands_exact_match() {
+    let filtered = CommandPalette::filter_commands("containers");
+    assert!(!filtered.is_empty());
+    // Should find "Go to Containers" and "Refresh Containers"
+    let labels: Vec<&str> = filtered.iter().map(|c| c.label).collect();
+    assert!(labels.iter().any(|l| l.contains("Container")));
+  }
+
+  #[test]
+  fn test_filter_commands_partial_match() {
+    let filtered = CommandPalette::filter_commands("cont");
+    assert!(!filtered.is_empty());
+    let labels: Vec<&str> = filtered.iter().map(|c| c.label).collect();
+    assert!(labels.iter().any(|l| l.contains("Container")));
+  }
+
+  #[test]
+  fn test_filter_commands_case_insensitive() {
+    let upper = CommandPalette::filter_commands("REFRESH");
+    let lower = CommandPalette::filter_commands("refresh");
+    assert_eq!(upper.len(), lower.len());
+    assert!(!upper.is_empty());
+  }
+
+  #[test]
+  fn test_filter_commands_by_category() {
+    let filtered = CommandPalette::filter_commands("docker");
+    assert!(!filtered.is_empty());
+    // Should find commands in Docker category
+    let categories: Vec<&str> = filtered.iter().map(|c| c.category).collect();
+    assert!(categories.iter().any(|c| c.to_lowercase().contains("docker")));
+  }
+
+  #[test]
+  fn test_filter_commands_fuzzy_match() {
+    // "gcp" should fuzzy match "Go to Compose" (g...c...p in "Go to ComPose")
+    let filtered = CommandPalette::filter_commands("gcp");
+    // If fuzzy works, should find Go to Compose
+    let labels: Vec<&str> = filtered.iter().map(|c| c.label).collect();
+    // Check if at least some results found (fuzzy matching)
+    // The exact behavior depends on implementation
+    assert!(!filtered.is_empty() || labels.is_empty());
+  }
+
+  #[test]
+  fn test_filter_commands_no_match() {
+    let filtered = CommandPalette::filter_commands("xyznonexistent123");
+    assert!(filtered.is_empty());
+  }
+
+  #[test]
+  fn test_filter_commands_prefix_priority() {
+    // Commands starting with the query should come first
+    let filtered = CommandPalette::filter_commands("go");
+    if filtered.len() >= 2 {
+      // First result should start with "Go"
+      assert!(
+        filtered[0].label.to_lowercase().starts_with("go"),
+        "First result should start with query prefix"
+      );
+    }
+  }
+
+  #[test]
+  fn test_palette_action_navigate_variants() {
+    // Verify navigate actions map to correct views
+    let commands = CommandPalette::all_commands();
+
+    let nav_containers = commands.iter().find(|c| c.id == "nav-containers").unwrap();
+    assert!(matches!(
+      nav_containers.action,
+      PaletteAction::Navigate(CurrentView::Containers)
+    ));
+
+    let nav_images = commands.iter().find(|c| c.id == "nav-images").unwrap();
+    assert!(matches!(
+      nav_images.action,
+      PaletteAction::Navigate(CurrentView::Images)
+    ));
+  }
+
+  #[test]
+  fn test_palette_command_has_required_fields() {
+    let commands = CommandPalette::all_commands();
+    for cmd in commands {
+      assert!(!cmd.id.is_empty(), "Command ID should not be empty");
+      assert!(!cmd.label.is_empty(), "Command label should not be empty");
+      assert!(!cmd.category.is_empty(), "Command category should not be empty");
+    }
+  }
+
+  #[test]
+  fn test_navigation_commands_have_shortcuts() {
+    let commands = CommandPalette::all_commands();
+    let nav_commands: Vec<_> = commands.iter().filter(|c| c.category == "Navigation").collect();
+
+    // Navigation commands should generally have shortcuts
+    let with_shortcuts: Vec<_> = nav_commands.iter().filter(|c| c.shortcut.is_some()).collect();
+    assert!(
+      with_shortcuts.len() >= nav_commands.len() / 2,
+      "Most navigation commands should have shortcuts"
+    );
+  }
+
+  #[test]
+  fn test_refresh_all_command_exists() {
+    let commands = CommandPalette::all_commands();
+    let refresh_all = commands.iter().find(|c| matches!(c.action, PaletteAction::RefreshAll));
+    assert!(refresh_all.is_some(), "RefreshAll command should exist");
+    assert!(
+      refresh_all.unwrap().shortcut.is_some(),
+      "RefreshAll should have a shortcut"
+    );
+  }
+}

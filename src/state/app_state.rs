@@ -62,3 +62,100 @@ pub struct MachineTabState {
   /// SSH config string
   pub ssh_config: Option<String>,
 }
+
+#[cfg(test)]
+mod tests {
+  use super::*;
+
+  #[test]
+  fn test_current_view_default() {
+    assert_eq!(CurrentView::default(), CurrentView::Containers);
+  }
+
+  #[test]
+  fn test_current_view_equality() {
+    assert_eq!(CurrentView::Containers, CurrentView::Containers);
+    assert_ne!(CurrentView::Containers, CurrentView::Images);
+    assert_ne!(CurrentView::Pods, CurrentView::Services);
+  }
+
+  #[test]
+  fn test_current_view_all_variants() {
+    // Ensure all views can be created
+    let views = vec![
+      CurrentView::Containers,
+      CurrentView::Compose,
+      CurrentView::Volumes,
+      CurrentView::Images,
+      CurrentView::Networks,
+      CurrentView::Pods,
+      CurrentView::Services,
+      CurrentView::Deployments,
+      CurrentView::Machines,
+      CurrentView::ActivityMonitor,
+      CurrentView::Settings,
+    ];
+    assert_eq!(views.len(), 11);
+  }
+
+  #[test]
+  fn test_machine_log_type_default() {
+    assert_eq!(MachineLogType::default(), MachineLogType::System);
+  }
+
+  #[test]
+  fn test_machine_log_type_variants() {
+    let types = [
+      MachineLogType::System,
+      MachineLogType::Docker,
+      MachineLogType::Containerd,
+    ];
+    assert_eq!(types.len(), 3);
+
+    // Verify they are distinct
+    assert_ne!(MachineLogType::System, MachineLogType::Docker);
+    assert_ne!(MachineLogType::Docker, MachineLogType::Containerd);
+  }
+
+  #[test]
+  fn test_machine_tab_state_default() {
+    let state = MachineTabState::default();
+    assert!(state.logs.is_empty());
+    assert!(!state.logs_loading);
+    assert_eq!(state.log_type, MachineLogType::System);
+    assert!(state.current_path.is_empty());
+    assert!(state.files.is_empty());
+    assert!(!state.files_loading);
+    assert!(state.selected_file.is_none());
+    assert!(state.file_content.is_empty());
+    assert!(!state.file_content_loading);
+    assert!(state.os_info.is_none());
+    assert!(state.disk_usage.is_empty());
+    assert!(state.memory_info.is_empty());
+    assert!(state.processes.is_empty());
+    assert!(!state.stats_loading);
+    assert!(state.colima_version.is_empty());
+    assert!(state.config.is_none());
+    assert!(state.ssh_config.is_none());
+  }
+
+  #[test]
+  fn test_machine_tab_state_with_values() {
+    let state = MachineTabState {
+      logs: "Some log content".to_string(),
+      logs_loading: true,
+      log_type: MachineLogType::Docker,
+      current_path: "/var/log".to_string(),
+      selected_file: Some("/var/log/syslog".to_string()),
+      colima_version: "0.6.0".to_string(),
+      ..Default::default()
+    };
+
+    assert_eq!(state.logs, "Some log content");
+    assert!(state.logs_loading);
+    assert_eq!(state.log_type, MachineLogType::Docker);
+    assert_eq!(state.current_path, "/var/log");
+    assert_eq!(state.selected_file, Some("/var/log/syslog".to_string()));
+    assert_eq!(state.colima_version, "0.6.0");
+  }
+}

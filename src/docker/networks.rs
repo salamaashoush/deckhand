@@ -175,3 +175,148 @@ impl DockerClient {
     })
   }
 }
+
+#[cfg(test)]
+mod tests {
+  use super::*;
+
+  #[test]
+  fn test_network_info_short_id() {
+    let network = NetworkInfo {
+      id: "abc123def456789012345".to_string(),
+      name: "my-network".to_string(),
+      driver: "bridge".to_string(),
+      scope: "local".to_string(),
+      internal: false,
+      enable_ipv6: false,
+      created: None,
+      labels: HashMap::new(),
+      options: HashMap::new(),
+      ipam: None,
+      containers: HashMap::new(),
+    };
+    assert_eq!(network.short_id(), "abc123def456");
+
+    let short = NetworkInfo {
+      id: "abc".to_string(),
+      ..network.clone()
+    };
+    assert_eq!(short.short_id(), "abc");
+  }
+
+  #[test]
+  fn test_network_info_container_count() {
+    let empty = NetworkInfo {
+      id: "net1".to_string(),
+      name: "empty-network".to_string(),
+      driver: "bridge".to_string(),
+      scope: "local".to_string(),
+      internal: false,
+      enable_ipv6: false,
+      created: None,
+      labels: HashMap::new(),
+      options: HashMap::new(),
+      ipam: None,
+      containers: HashMap::new(),
+    };
+    assert_eq!(empty.container_count(), 0);
+
+    let with_containers = NetworkInfo {
+      containers: HashMap::from([
+        (
+          "c1".to_string(),
+          NetworkContainer {
+            name: Some("container1".to_string()),
+            endpoint_id: None,
+            mac_address: None,
+            ipv4_address: Some("172.17.0.2".to_string()),
+            ipv6_address: None,
+          },
+        ),
+        (
+          "c2".to_string(),
+          NetworkContainer {
+            name: Some("container2".to_string()),
+            endpoint_id: None,
+            mac_address: None,
+            ipv4_address: Some("172.17.0.3".to_string()),
+            ipv6_address: None,
+          },
+        ),
+      ]),
+      ..empty.clone()
+    };
+    assert_eq!(with_containers.container_count(), 2);
+  }
+
+  #[test]
+  fn test_network_info_is_system_network() {
+    let base = NetworkInfo {
+      id: "net1".to_string(),
+      name: "custom".to_string(),
+      driver: "bridge".to_string(),
+      scope: "local".to_string(),
+      internal: false,
+      enable_ipv6: false,
+      created: None,
+      labels: HashMap::new(),
+      options: HashMap::new(),
+      ipam: None,
+      containers: HashMap::new(),
+    };
+
+    // Custom network
+    assert!(!base.is_system_network());
+
+    // Bridge network
+    let bridge = NetworkInfo {
+      name: "bridge".to_string(),
+      ..base.clone()
+    };
+    assert!(bridge.is_system_network());
+
+    // Host network
+    let host = NetworkInfo {
+      name: "host".to_string(),
+      ..base.clone()
+    };
+    assert!(host.is_system_network());
+
+    // None network
+    let none = NetworkInfo {
+      name: "none".to_string(),
+      ..base.clone()
+    };
+    assert!(none.is_system_network());
+  }
+
+  #[test]
+  fn test_ipam_info() {
+    let ipam = IpamInfo {
+      driver: Some("default".to_string()),
+      config: vec![IpamConfig {
+        subnet: Some("172.18.0.0/16".to_string()),
+        gateway: Some("172.18.0.1".to_string()),
+        ip_range: None,
+      }],
+    };
+    assert_eq!(ipam.driver, Some("default".to_string()));
+    assert_eq!(ipam.config.len(), 1);
+    assert_eq!(ipam.config[0].subnet, Some("172.18.0.0/16".to_string()));
+    assert_eq!(ipam.config[0].gateway, Some("172.18.0.1".to_string()));
+  }
+
+  #[test]
+  fn test_network_container() {
+    let container = NetworkContainer {
+      name: Some("nginx".to_string()),
+      endpoint_id: Some("endpoint123".to_string()),
+      mac_address: Some("02:42:ac:11:00:02".to_string()),
+      ipv4_address: Some("172.17.0.2/16".to_string()),
+      ipv6_address: Some("fd00::2/64".to_string()),
+    };
+    assert_eq!(container.name, Some("nginx".to_string()));
+    assert_eq!(container.ipv4_address, Some("172.17.0.2/16".to_string()));
+    assert_eq!(container.ipv6_address, Some("fd00::2/64".to_string()));
+  }
+}

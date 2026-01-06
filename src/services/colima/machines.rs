@@ -17,17 +17,17 @@ pub fn create_machine(profile: String, config: ColimaConfig, cx: &mut App) {
 
   // Create staged task with clear progress stages
   let mut stages = vec![
-    TaskStage::new("config", "Writing configuration..."),
-    TaskStage::new("download", "Downloading VM image..."),
-    TaskStage::new("create", format!("Creating VM '{profile}'...")),
-    TaskStage::new("configure", "Configuring runtime..."),
+    TaskStage::new("Writing configuration..."),
+    TaskStage::new("Downloading VM image..."),
+    TaskStage::new(format!("Creating VM '{profile}'...")),
+    TaskStage::new("Configuring runtime..."),
   ];
 
   if has_kubernetes {
-    stages.push(TaskStage::new("kubernetes", "Setting up Kubernetes..."));
+    stages.push(TaskStage::new("Setting up Kubernetes..."));
   }
 
-  stages.push(TaskStage::new("verify", "Verifying machine..."));
+  stages.push(TaskStage::new("Verifying machine..."));
 
   let task_id = start_staged_task(cx, format!("Creating '{profile}'"), stages);
   let profile_clone = profile.clone();
@@ -102,10 +102,10 @@ pub fn edit_machine(profile: String, config: ColimaConfig, cx: &mut App) {
 
   // Create staged task with clear progress stages
   let stages = vec![
-    TaskStage::new("stop", format!("Stopping '{profile}'...")),
-    TaskStage::new("config", "Writing new configuration..."),
-    TaskStage::new("start", format!("Starting '{profile}' with new configuration...")),
-    TaskStage::new("verify", format!("Verifying '{profile}'...")),
+    TaskStage::new(format!("Stopping '{profile}'...")),
+    TaskStage::new("Writing new configuration..."),
+    TaskStage::new(format!("Starting '{profile}' with new configuration...")),
+    TaskStage::new(format!("Verifying '{profile}'...")),
   ];
 
   let task_id = start_staged_task(cx, format!("Updating '{profile}'"), stages);
@@ -730,13 +730,6 @@ pub fn prune_cache(all: bool, cx: &mut App) {
     })
   })
   .detach();
-}
-
-/// Get SSH config for a machine (returns config string via callback)
-#[allow(dead_code)]
-pub fn get_ssh_config(name: &str, _cx: &mut App) -> Option<String> {
-  let name_opt = if name == "default" { None } else { Some(name) };
-  ColimaClient::ssh_config(name_opt).ok()
 }
 
 /// Run a provision script on a machine

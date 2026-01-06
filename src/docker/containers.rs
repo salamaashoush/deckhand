@@ -589,3 +589,284 @@ impl DockerClient {
     Ok(output.map(|s| s.contains("dir")).unwrap_or(false))
   }
 }
+
+#[cfg(test)]
+mod tests {
+  use super::*;
+
+  #[test]
+  fn test_container_state_from_str() {
+    assert_eq!(ContainerState::from_str("running"), ContainerState::Running);
+    assert_eq!(ContainerState::from_str("Running"), ContainerState::Running);
+    assert_eq!(ContainerState::from_str("RUNNING"), ContainerState::Running);
+    assert_eq!(ContainerState::from_str("paused"), ContainerState::Paused);
+    assert_eq!(ContainerState::from_str("restarting"), ContainerState::Restarting);
+    assert_eq!(ContainerState::from_str("exited"), ContainerState::Exited);
+    assert_eq!(ContainerState::from_str("dead"), ContainerState::Dead);
+    assert_eq!(ContainerState::from_str("created"), ContainerState::Created);
+    assert_eq!(ContainerState::from_str("removing"), ContainerState::Removing);
+    assert_eq!(ContainerState::from_str("unknown"), ContainerState::Unknown);
+    assert_eq!(ContainerState::from_str("invalid"), ContainerState::Unknown);
+  }
+
+  #[test]
+  fn test_container_state_is_running() {
+    assert!(ContainerState::Running.is_running());
+    assert!(!ContainerState::Paused.is_running());
+    assert!(!ContainerState::Exited.is_running());
+    assert!(!ContainerState::Unknown.is_running());
+  }
+
+  #[test]
+  fn test_container_state_is_paused() {
+    assert!(ContainerState::Paused.is_paused());
+    assert!(!ContainerState::Running.is_paused());
+    assert!(!ContainerState::Exited.is_paused());
+  }
+
+  #[test]
+  fn test_container_state_display() {
+    assert_eq!(format!("{}", ContainerState::Running), "Running");
+    assert_eq!(format!("{}", ContainerState::Paused), "Paused");
+    assert_eq!(format!("{}", ContainerState::Restarting), "Restarting");
+    assert_eq!(format!("{}", ContainerState::Exited), "Exited");
+    assert_eq!(format!("{}", ContainerState::Dead), "Dead");
+    assert_eq!(format!("{}", ContainerState::Created), "Created");
+    assert_eq!(format!("{}", ContainerState::Removing), "Removing");
+    assert_eq!(format!("{}", ContainerState::Unknown), "Unknown");
+  }
+
+  #[test]
+  fn test_container_info_short_id() {
+    let container = ContainerInfo {
+      id: "abc123def456789".to_string(),
+      name: "test".to_string(),
+      image: "nginx".to_string(),
+      image_id: "sha256:abc".to_string(),
+      state: ContainerState::Running,
+      status: "Up 5 minutes".to_string(),
+      created: None,
+      ports: vec![],
+      labels: HashMap::new(),
+      command: None,
+      size_rw: None,
+      size_root_fs: None,
+    };
+    assert_eq!(container.short_id(), "abc123def456");
+
+    // Test with short id
+    let short_container = ContainerInfo {
+      id: "abc".to_string(),
+      ..container.clone()
+    };
+    assert_eq!(short_container.short_id(), "abc");
+  }
+
+  #[test]
+  fn test_container_info_display_ports() {
+    let container = ContainerInfo {
+      id: "abc123".to_string(),
+      name: "test".to_string(),
+      image: "nginx".to_string(),
+      image_id: "sha256:abc".to_string(),
+      state: ContainerState::Running,
+      status: "Up 5 minutes".to_string(),
+      created: None,
+      ports: vec![
+        PortMapping {
+          private_port: 80,
+          public_port: Some(8080),
+          protocol: "tcp".to_string(),
+          ip: Some("0.0.0.0".to_string()),
+        },
+        PortMapping {
+          private_port: 443,
+          public_port: Some(8443),
+          protocol: "tcp".to_string(),
+          ip: None,
+        },
+        PortMapping {
+          private_port: 53,
+          public_port: None, // No public port
+          protocol: "udp".to_string(),
+          ip: None,
+        },
+      ],
+      labels: HashMap::new(),
+      command: None,
+      size_rw: None,
+      size_root_fs: None,
+    };
+    assert_eq!(container.display_ports(), "8080:80, 8443:443");
+
+    // Test with no ports
+    let no_ports = ContainerInfo {
+      ports: vec![],
+      ..container.clone()
+    };
+    assert_eq!(no_ports.display_ports(), "");
+  }
+
+  #[test]
+  fn test_container_file_entry_display_size() {
+    // Directory shows "-"
+    let dir = ContainerFileEntry {
+      name: "test".to_string(),
+      path: "/test".to_string(),
+      is_dir: true,
+      is_symlink: false,
+      size: 4096,
+      permissions: "drwxr-xr-x".to_string(),
+    };
+    assert_eq!(dir.display_size(), "-");
+
+    // File shows formatted size (bytesize uses binary units)
+    let file = ContainerFileEntry {
+      name: "test.txt".to_string(),
+      path: "/test.txt".to_string(),
+      is_dir: false,
+      is_symlink: false,
+      size: 1024,
+      permissions: "-rw-r--r--".to_string(),
+    };
+    assert_eq!(file.display_size(), "1.0 KiB");
+
+    // Large file
+    let large_file = ContainerFileEntry {
+      size: 1024 * 1024 * 5, // 5 MiB
+      ..file.clone()
+    };
+    assert_eq!(large_file.display_size(), "5.0 MiB");
+  }
+
+  #[test]
+  fn test_port_mapping() {
+    let port = PortMapping {
+      private_port: 80,
+      public_port: Some(8080),
+      protocol: "tcp".to_string(),
+      ip: Some("0.0.0.0".to_string()),
+    };
+    assert_eq!(port.private_port, 80);
+    assert_eq!(port.public_port, Some(8080));
+    assert_eq!(port.protocol, "tcp");
+    assert_eq!(port.ip, Some("0.0.0.0".to_string()));
+  }
+
+  #[test]
+  fn test_container_flags_default() {
+    let flags = ContainerFlags::default();
+    assert!(!flags.auto_remove);
+    assert!(!flags.privileged);
+    assert!(!flags.read_only);
+    assert!(!flags.init);
+  }
+
+  #[test]
+  fn test_container_create_config_default() {
+    let config = ContainerCreateConfig::default();
+    assert!(config.image.is_empty());
+    assert!(config.name.is_none());
+    assert!(config.platform.is_none());
+    assert!(config.command.is_none());
+    assert!(config.entrypoint.is_none());
+    assert!(config.working_dir.is_none());
+    assert!(config.restart_policy.is_none());
+    assert!(config.env_vars.is_empty());
+    assert!(config.ports.is_empty());
+    assert!(config.volumes.is_empty());
+    assert!(config.network.is_none());
+  }
+
+  #[test]
+  fn test_build_exposed_ports_map() {
+    let ports: HashSet<String> = ["80/tcp".to_string(), "443/tcp".to_string()].into_iter().collect();
+    let result = build_exposed_ports_map(ports);
+    assert_eq!(result.len(), 2);
+    assert!(result.contains_key("80/tcp"));
+    assert!(result.contains_key("443/tcp"));
+  }
+
+  // Edge case tests for real-world scenarios
+
+  #[test]
+  fn test_container_state_case_insensitive() {
+    // Docker API can return states in different cases
+    assert_eq!(ContainerState::from_str("RUNNING"), ContainerState::Running);
+    assert_eq!(ContainerState::from_str("Running"), ContainerState::Running);
+    assert_eq!(ContainerState::from_str("RuNnInG"), ContainerState::Running);
+  }
+
+  #[test]
+  fn test_container_short_id_exact_12_chars() {
+    let container = ContainerInfo {
+      id: "123456789012".to_string(), // exactly 12 chars
+      name: "test".to_string(),
+      image: "nginx".to_string(),
+      image_id: "sha256:abc".to_string(),
+      state: ContainerState::Running,
+      status: "Up".to_string(),
+      created: None,
+      ports: vec![],
+      labels: HashMap::new(),
+      command: None,
+      size_rw: None,
+      size_root_fs: None,
+    };
+    assert_eq!(container.short_id(), "123456789012");
+  }
+
+  #[test]
+  fn test_container_display_ports_internal_only() {
+    // Container with internal port but no public port (common for linked containers)
+    let container = ContainerInfo {
+      id: "abc123".to_string(),
+      name: "internal-only".to_string(),
+      image: "redis".to_string(),
+      image_id: "sha256:abc".to_string(),
+      state: ContainerState::Running,
+      status: "Up".to_string(),
+      created: None,
+      ports: vec![PortMapping {
+        private_port: 6379,
+        public_port: None,
+        protocol: "tcp".to_string(),
+        ip: None,
+      }],
+      labels: HashMap::new(),
+      command: None,
+      size_rw: None,
+      size_root_fs: None,
+    };
+    // Should return empty string when no public ports
+    assert_eq!(container.display_ports(), "");
+  }
+
+  #[test]
+  fn test_container_file_entry_zero_size() {
+    // Empty files should display as 0 B
+    let empty_file = ContainerFileEntry {
+      name: "empty.txt".to_string(),
+      path: "/empty.txt".to_string(),
+      is_dir: false,
+      is_symlink: false,
+      size: 0,
+      permissions: "-rw-r--r--".to_string(),
+    };
+    assert_eq!(empty_file.display_size(), "0 B");
+  }
+
+  #[test]
+  fn test_container_file_entry_symlink_shows_size() {
+    // Symlinks are files, should show size not "-"
+    let symlink = ContainerFileEntry {
+      name: "link".to_string(),
+      path: "/link".to_string(),
+      is_dir: false,
+      is_symlink: true,
+      size: 42,
+      permissions: "lrwxrwxrwx".to_string(),
+    };
+    assert_eq!(symlink.display_size(), "42 B");
+  }
+}

@@ -506,3 +506,121 @@ impl DockerClient {
     Ok(output.contains("dir"))
   }
 }
+
+#[cfg(test)]
+mod tests {
+  use super::*;
+
+  #[test]
+  fn test_volume_info_display_size() {
+    // With usage data
+    let volume = VolumeInfo {
+      name: "my-volume".to_string(),
+      driver: "local".to_string(),
+      mountpoint: "/var/lib/docker/volumes/my-volume/_data".to_string(),
+      created: None,
+      labels: HashMap::new(),
+      scope: "local".to_string(),
+      status: None,
+      usage_data: Some(VolumeUsage {
+        size: 1024 * 1024 * 100, // 100 MiB
+        ref_count: 1,
+      }),
+    };
+    assert_eq!(volume.display_size(), "100.0 MiB");
+
+    // Without usage data
+    let no_usage = VolumeInfo {
+      usage_data: None,
+      ..volume.clone()
+    };
+    assert_eq!(no_usage.display_size(), "Unknown");
+  }
+
+  #[test]
+  fn test_volume_info_is_in_use() {
+    // In use (ref_count > 0)
+    let in_use = VolumeInfo {
+      name: "used-volume".to_string(),
+      driver: "local".to_string(),
+      mountpoint: "/data".to_string(),
+      created: None,
+      labels: HashMap::new(),
+      scope: "local".to_string(),
+      status: None,
+      usage_data: Some(VolumeUsage {
+        size: 1000,
+        ref_count: 2,
+      }),
+    };
+    assert!(in_use.is_in_use());
+
+    // Not in use (ref_count == 0)
+    let not_in_use = VolumeInfo {
+      usage_data: Some(VolumeUsage {
+        size: 1000,
+        ref_count: 0,
+      }),
+      ..in_use.clone()
+    };
+    assert!(!not_in_use.is_in_use());
+
+    // No usage data
+    let no_usage = VolumeInfo {
+      usage_data: None,
+      ..in_use.clone()
+    };
+    assert!(!no_usage.is_in_use());
+  }
+
+  #[test]
+  fn test_volume_usage() {
+    let usage = VolumeUsage {
+      size: 1024 * 1024 * 50,
+      ref_count: 3,
+    };
+    assert_eq!(usage.size, 1024 * 1024 * 50);
+    assert_eq!(usage.ref_count, 3);
+  }
+
+  #[test]
+  fn test_volume_file_entry_display_size() {
+    // Directory
+    let dir = VolumeFileEntry {
+      name: "data".to_string(),
+      path: "/data".to_string(),
+      is_dir: true,
+      is_symlink: false,
+      size: 4096,
+      permissions: "drwxr-xr-x".to_string(),
+    };
+    assert_eq!(dir.display_size(), "-");
+
+    // File with size (bytesize uses binary units)
+    let file = VolumeFileEntry {
+      name: "config.json".to_string(),
+      path: "/config.json".to_string(),
+      is_dir: false,
+      is_symlink: false,
+      size: 2048, // 2 KiB
+      permissions: "-rw-r--r--".to_string(),
+    };
+    assert_eq!(file.display_size(), "2.0 KiB");
+
+    // Large file
+    let large = VolumeFileEntry {
+      size: 1024 * 1024 * 256, // 256 MiB
+      ..file.clone()
+    };
+    assert_eq!(large.display_size(), "256.0 MiB");
+
+    // Symlink (treated as file)
+    let symlink = VolumeFileEntry {
+      is_dir: false,
+      is_symlink: true,
+      size: 20,
+      ..file.clone()
+    };
+    assert_eq!(symlink.display_size(), "20 B");
+  }
+}

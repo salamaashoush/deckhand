@@ -266,6 +266,7 @@ fn handle_tray_menu_event(id: &str, cx: &mut App) {
       services::restart_colima(None, cx);
     }
     menu_ids::QUIT => {
+      services::stop_watchers(cx);
       cx.quit();
     }
     _ => {}

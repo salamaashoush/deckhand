@@ -286,28 +286,6 @@ pub enum LoadState {
   Error(String),
 }
 
-#[allow(dead_code)]
-impl LoadState {
-  pub fn is_loading(&self) -> bool {
-    matches!(self, LoadState::Loading)
-  }
-
-  pub fn is_loaded(&self) -> bool {
-    matches!(self, LoadState::Loaded)
-  }
-
-  pub fn is_error(&self) -> bool {
-    matches!(self, LoadState::Error(_))
-  }
-
-  pub fn error_message(&self) -> Option<&str> {
-    match self {
-      LoadState::Error(msg) => Some(msg),
-      _ => None,
-    }
-  }
-}
-
 /// Global docker state - all views subscribe to this
 pub struct DockerState {
   // Docker Data
@@ -389,30 +367,10 @@ impl DockerState {
     self.machines_state = LoadState::Loaded;
   }
 
-  #[allow(dead_code)]
-  pub fn set_machines_loading(&mut self) {
-    self.machines_state = LoadState::Loading;
-  }
-
-  #[allow(dead_code)]
-  pub fn set_machines_error(&mut self, error: String) {
-    self.machines_state = LoadState::Error(error);
-  }
-
   // Containers
   pub fn set_containers(&mut self, containers: Vec<ContainerInfo>) {
     self.containers = containers;
     self.containers_state = LoadState::Loaded;
-  }
-
-  #[allow(dead_code)]
-  pub fn set_containers_loading(&mut self) {
-    self.containers_state = LoadState::Loading;
-  }
-
-  #[allow(dead_code)]
-  pub fn set_containers_error(&mut self, error: String) {
-    self.containers_state = LoadState::Error(error);
   }
 
   // Images
@@ -421,46 +379,16 @@ impl DockerState {
     self.images_state = LoadState::Loaded;
   }
 
-  #[allow(dead_code)]
-  pub fn set_images_loading(&mut self) {
-    self.images_state = LoadState::Loading;
-  }
-
-  #[allow(dead_code)]
-  pub fn set_images_error(&mut self, error: String) {
-    self.images_state = LoadState::Error(error);
-  }
-
   // Volumes
   pub fn set_volumes(&mut self, volumes: Vec<VolumeInfo>) {
     self.volumes = volumes;
     self.volumes_state = LoadState::Loaded;
   }
 
-  #[allow(dead_code)]
-  pub fn set_volumes_loading(&mut self) {
-    self.volumes_state = LoadState::Loading;
-  }
-
-  #[allow(dead_code)]
-  pub fn set_volumes_error(&mut self, error: String) {
-    self.volumes_state = LoadState::Error(error);
-  }
-
   // Networks
   pub fn set_networks(&mut self, networks: Vec<NetworkInfo>) {
     self.networks = networks;
     self.networks_state = LoadState::Loaded;
-  }
-
-  #[allow(dead_code)]
-  pub fn set_networks_loading(&mut self) {
-    self.networks_state = LoadState::Loading;
-  }
-
-  #[allow(dead_code)]
-  pub fn set_networks_error(&mut self, error: String) {
-    self.networks_state = LoadState::Error(error);
   }
 
   // Pods (Kubernetes)
@@ -576,4 +504,178 @@ pub fn init_docker_state(cx: &mut App) -> Entity<DockerState> {
 /// Get the global docker state entity
 pub fn docker_state(cx: &App) -> Entity<DockerState> {
   cx.global::<GlobalDockerState>().0.clone()
+}
+
+#[cfg(test)]
+mod tests {
+  use super::super::app_state::CurrentView;
+  use super::*;
+
+  #[test]
+  fn test_docker_state_initialization() {
+    let state = DockerState::new();
+
+    assert!(state.containers.is_empty());
+    assert!(state.images.is_empty());
+    assert!(state.volumes.is_empty());
+    assert!(state.networks.is_empty());
+    assert!(state.colima_vms.is_empty());
+    assert!(matches!(state.selection, Selection::None));
+    assert!(state.is_loading);
+    assert!(!state.k8s_available);
+  }
+
+  #[test]
+  fn test_docker_state_load_states() {
+    let state = DockerState::new();
+
+    // All states should start as NotLoaded
+    assert!(matches!(state.containers_state, LoadState::NotLoaded));
+    assert!(matches!(state.images_state, LoadState::NotLoaded));
+    assert!(matches!(state.volumes_state, LoadState::NotLoaded));
+    assert!(matches!(state.networks_state, LoadState::NotLoaded));
+    assert!(matches!(state.pods_state, LoadState::NotLoaded));
+    assert!(matches!(state.services_state, LoadState::NotLoaded));
+    assert!(matches!(state.deployments_state, LoadState::NotLoaded));
+    assert!(matches!(state.machines_state, LoadState::NotLoaded));
+  }
+
+  #[test]
+  fn test_docker_state_selection() {
+    let mut state = DockerState::new();
+
+    // Initial selection is None
+    assert!(matches!(state.selection, Selection::None));
+
+    // Set volume selection
+    state.set_selection(Selection::Volume("my-volume".to_string()));
+    assert!(matches!(state.selection, Selection::Volume(_)));
+    if let Selection::Volume(ref name) = state.selection {
+      assert_eq!(name, "my-volume");
+    }
+
+    // Set network selection
+    state.set_selection(Selection::Network("network-123".to_string()));
+    assert!(matches!(state.selection, Selection::Network(_)));
+
+    // Set machine selection
+    state.set_selection(Selection::Machine("default".to_string()));
+    assert!(matches!(state.selection, Selection::Machine(_)));
+
+    // Set pod selection
+    state.set_selection(Selection::Pod {
+      name: "my-pod".to_string(),
+      namespace: "default".to_string(),
+    });
+    assert!(matches!(state.selection, Selection::Pod { .. }));
+
+    // Clear selection
+    state.set_selection(Selection::None);
+    assert!(matches!(state.selection, Selection::None));
+  }
+
+  #[test]
+  fn test_docker_state_kubernetes() {
+    let mut state = DockerState::new();
+
+    // Initially k8s should not be available
+    assert!(!state.k8s_available);
+    assert!(state.k8s_error.is_none());
+
+    // Set k8s as available
+    state.set_k8s_available(true);
+    assert!(state.k8s_available);
+    assert!(state.k8s_error.is_none());
+
+    // Set k8s error - should mark as unavailable
+    state.set_k8s_error(Some("Connection refused".to_string()));
+    assert!(!state.k8s_available);
+    assert_eq!(state.k8s_error, Some("Connection refused".to_string()));
+
+    // Clear error by setting available
+    state.set_k8s_available(true);
+    assert!(state.k8s_available);
+    assert!(state.k8s_error.is_none());
+  }
+
+  #[test]
+  fn test_docker_state_namespaces() {
+    let mut state = DockerState::new();
+
+    // Default namespace should be "default"
+    assert_eq!(state.selected_namespace, "default");
+    assert_eq!(state.namespaces, vec!["default".to_string()]);
+
+    // Set namespaces
+    state.set_namespaces(vec![
+      "default".to_string(),
+      "kube-system".to_string(),
+      "production".to_string(),
+    ]);
+    assert_eq!(state.namespaces.len(), 3);
+
+    // Change selected namespace
+    state.set_selected_namespace("production".to_string());
+    assert_eq!(state.selected_namespace, "production");
+  }
+
+  #[test]
+  fn test_docker_state_view_navigation() {
+    let mut state = DockerState::new();
+
+    // Set different views
+    state.set_view(CurrentView::Containers);
+    assert!(matches!(state.current_view, CurrentView::Containers));
+    assert_eq!(state.active_detail_tab, 0); // Tab resets on view change
+
+    state.active_detail_tab = 2;
+    state.set_view(CurrentView::Images);
+    assert!(matches!(state.current_view, CurrentView::Images));
+    assert_eq!(state.active_detail_tab, 0); // Tab resets
+  }
+
+  #[test]
+  fn test_load_state_enum() {
+    let not_loaded = LoadState::NotLoaded;
+    let loading = LoadState::Loading;
+    let loaded = LoadState::Loaded;
+    let error = LoadState::Error("Test error".to_string());
+
+    assert!(matches!(not_loaded, LoadState::NotLoaded));
+    assert!(matches!(loading, LoadState::Loading));
+    assert!(matches!(loaded, LoadState::Loaded));
+    assert!(matches!(error, LoadState::Error(_)));
+  }
+
+  #[test]
+  fn test_container_detail_tab() {
+    assert_eq!(ContainerDetailTab::ALL.len(), 5);
+    assert_eq!(ContainerDetailTab::Info.label(), "Info");
+    assert_eq!(ContainerDetailTab::Logs.label(), "Logs");
+    assert_eq!(ContainerDetailTab::Terminal.label(), "Terminal");
+    assert_eq!(ContainerDetailTab::Files.label(), "Files");
+    assert_eq!(ContainerDetailTab::Inspect.label(), "Inspect");
+  }
+
+  #[test]
+  fn test_machine_detail_tab() {
+    assert_eq!(MachineDetailTab::ALL.len(), 7);
+    assert_eq!(MachineDetailTab::Info.label(), "Info");
+    assert_eq!(MachineDetailTab::Config.label(), "Config");
+    assert_eq!(MachineDetailTab::Stats.label(), "Stats");
+    assert_eq!(MachineDetailTab::Processes.label(), "Processes");
+    assert_eq!(MachineDetailTab::Logs.label(), "Logs");
+    assert_eq!(MachineDetailTab::Terminal.label(), "Terminal");
+    assert_eq!(MachineDetailTab::Files.label(), "Files");
+  }
+
+  #[test]
+  fn test_pod_detail_tab() {
+    assert_eq!(PodDetailTab::ALL.len(), 5);
+    assert_eq!(PodDetailTab::Info.label(), "Info");
+    assert_eq!(PodDetailTab::Logs.label(), "Logs");
+    assert_eq!(PodDetailTab::Terminal.label(), "Terminal");
+    assert_eq!(PodDetailTab::Describe.label(), "Describe");
+    assert_eq!(PodDetailTab::Yaml.label(), "YAML");
+  }
 }

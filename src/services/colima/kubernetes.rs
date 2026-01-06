@@ -249,9 +249,9 @@ pub fn kubernetes_reset(name: String, cx: &mut App) {
 pub fn enable_kubernetes(name: String, cx: &mut App) {
   // Create staged task with clear progress stages
   let stages = vec![
-    TaskStage::new("stop", format!("Stopping '{name}'...")),
-    TaskStage::new("start", format!("Starting '{name}' with Kubernetes...")),
-    TaskStage::new("verify", format!("Verifying Kubernetes on '{name}'...")),
+    TaskStage::new(format!("Stopping '{name}'...")),
+    TaskStage::new(format!("Starting '{name}' with Kubernetes...")),
+    TaskStage::new(format!("Verifying Kubernetes on '{name}'...")),
   ];
 
   let task_id = start_staged_task(cx, format!("Enabling K8s on '{name}'"), stages);

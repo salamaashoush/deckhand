@@ -50,6 +50,7 @@ url = "2.5.7"
 
 [dev-dependencies]
 criterion = "0.8"
+gpui = { version = "0.2", features = ["test-support"] }
 
 [build-dependencies]
 

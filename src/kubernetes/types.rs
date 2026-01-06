@@ -320,3 +320,295 @@ impl DeploymentInfo {
     format!("{}/{}", self.ready_replicas, self.replicas)
   }
 }
+
+#[cfg(test)]
+mod tests {
+  use super::*;
+
+  #[test]
+  fn test_pod_phase_from_str() {
+    assert_eq!(PodPhase::from_str("Running"), PodPhase::Running);
+    assert_eq!(PodPhase::from_str("Pending"), PodPhase::Pending);
+    assert_eq!(PodPhase::from_str("Succeeded"), PodPhase::Succeeded);
+    assert_eq!(PodPhase::from_str("Failed"), PodPhase::Failed);
+    assert_eq!(PodPhase::from_str("Unknown"), PodPhase::Unknown);
+    assert_eq!(PodPhase::from_str("invalid"), PodPhase::Unknown);
+  }
+
+  #[test]
+  fn test_pod_phase_is_running() {
+    assert!(PodPhase::Running.is_running());
+    assert!(!PodPhase::Pending.is_running());
+    assert!(!PodPhase::Succeeded.is_running());
+    assert!(!PodPhase::Failed.is_running());
+    assert!(!PodPhase::Unknown.is_running());
+  }
+
+  #[test]
+  fn test_pod_phase_is_pending() {
+    assert!(PodPhase::Pending.is_pending());
+    assert!(!PodPhase::Running.is_pending());
+    assert!(!PodPhase::Succeeded.is_pending());
+    assert!(!PodPhase::Failed.is_pending());
+  }
+
+  #[test]
+  fn test_pod_phase_display() {
+    assert_eq!(format!("{}", PodPhase::Running), "Running");
+    assert_eq!(format!("{}", PodPhase::Pending), "Pending");
+    assert_eq!(format!("{}", PodPhase::Succeeded), "Succeeded");
+    assert_eq!(format!("{}", PodPhase::Failed), "Failed");
+    assert_eq!(format!("{}", PodPhase::Unknown), "Unknown");
+  }
+
+  #[test]
+  fn test_pod_phase_default() {
+    assert_eq!(PodPhase::default(), PodPhase::Unknown);
+  }
+
+  #[test]
+  fn test_pod_container() {
+    let container = PodContainer {
+      name: "nginx".to_string(),
+      image: "nginx:latest".to_string(),
+      ready: true,
+      restart_count: 0,
+    };
+    assert_eq!(container.name, "nginx");
+    assert_eq!(container.image, "nginx:latest");
+    assert!(container.ready);
+    assert_eq!(container.restart_count, 0);
+  }
+
+  #[test]
+  fn test_pod_info() {
+    let pod = PodInfo {
+      name: "my-pod".to_string(),
+      namespace: "default".to_string(),
+      phase: PodPhase::Running,
+      ready: "1/1".to_string(),
+      restarts: 0,
+      age: "5m".to_string(),
+      node: Some("node-1".to_string()),
+      ip: Some("10.0.0.1".to_string()),
+      containers: vec![PodContainer {
+        name: "nginx".to_string(),
+        image: "nginx:latest".to_string(),
+        ready: true,
+        restart_count: 0,
+      }],
+      labels: HashMap::from([("app".to_string(), "nginx".to_string())]),
+    };
+    assert_eq!(pod.name, "my-pod");
+    assert_eq!(pod.namespace, "default");
+    assert!(pod.phase.is_running());
+    assert_eq!(pod.containers.len(), 1);
+    assert_eq!(pod.labels.get("app"), Some(&"nginx".to_string()));
+  }
+
+  #[test]
+  fn test_namespace_info() {
+    let ns = NamespaceInfo {
+      name: "kube-system".to_string(),
+    };
+    assert_eq!(ns.name, "kube-system");
+  }
+
+  #[test]
+  fn test_service_port_info() {
+    let port = ServicePortInfo {
+      name: Some("http".to_string()),
+      protocol: "TCP".to_string(),
+      port: 80,
+      target_port: "8080".to_string(),
+      node_port: Some(30080),
+    };
+    assert_eq!(port.name, Some("http".to_string()));
+    assert_eq!(port.protocol, "TCP");
+    assert_eq!(port.port, 80);
+    assert_eq!(port.target_port, "8080");
+    assert_eq!(port.node_port, Some(30080));
+  }
+
+  #[test]
+  fn test_service_info_ports_display() {
+    let svc = ServiceInfo {
+      name: "my-service".to_string(),
+      namespace: "default".to_string(),
+      service_type: "NodePort".to_string(),
+      cluster_ip: Some("10.96.0.1".to_string()),
+      external_ips: vec![],
+      ports: vec![
+        ServicePortInfo {
+          name: Some("http".to_string()),
+          protocol: "TCP".to_string(),
+          port: 80,
+          target_port: "8080".to_string(),
+          node_port: Some(30080),
+        },
+        ServicePortInfo {
+          name: Some("https".to_string()),
+          protocol: "TCP".to_string(),
+          port: 443,
+          target_port: "8443".to_string(),
+          node_port: None,
+        },
+      ],
+      selector: HashMap::from([("app".to_string(), "nginx".to_string())]),
+      age: "1h".to_string(),
+      labels: HashMap::new(),
+    };
+    assert_eq!(svc.ports_display(), "80:30080/TCP, 443:8443/TCP");
+  }
+
+  #[test]
+  fn test_service_info_ports_display_no_node_port() {
+    let svc = ServiceInfo {
+      name: "cluster-ip-svc".to_string(),
+      namespace: "default".to_string(),
+      service_type: "ClusterIP".to_string(),
+      cluster_ip: Some("10.96.0.2".to_string()),
+      external_ips: vec![],
+      ports: vec![ServicePortInfo {
+        name: None,
+        protocol: "TCP".to_string(),
+        port: 8080,
+        target_port: "http".to_string(),
+        node_port: None,
+      }],
+      selector: HashMap::new(),
+      age: "2h".to_string(),
+      labels: HashMap::new(),
+    };
+    assert_eq!(svc.ports_display(), "8080:http/TCP");
+  }
+
+  #[test]
+  fn test_deployment_info_ready_display() {
+    let dep = DeploymentInfo {
+      name: "my-deployment".to_string(),
+      namespace: "default".to_string(),
+      replicas: 3,
+      ready_replicas: 2,
+      updated_replicas: 3,
+      available_replicas: 2,
+      age: "1d".to_string(),
+      labels: HashMap::new(),
+      images: vec!["nginx:latest".to_string()],
+    };
+    assert_eq!(dep.ready_display(), "2/3");
+  }
+
+  #[test]
+  fn test_deployment_info_all_ready() {
+    let dep = DeploymentInfo {
+      name: "ready-deployment".to_string(),
+      namespace: "default".to_string(),
+      replicas: 5,
+      ready_replicas: 5,
+      updated_replicas: 5,
+      available_replicas: 5,
+      age: "2d".to_string(),
+      labels: HashMap::from([("app".to_string(), "web".to_string())]),
+      images: vec!["app:v1".to_string(), "sidecar:v1".to_string()],
+    };
+    assert_eq!(dep.ready_display(), "5/5");
+    assert_eq!(dep.images.len(), 2);
+  }
+
+  // Edge case tests
+
+  #[test]
+  fn test_pod_phase_case_sensitive() {
+    // Unlike Docker ContainerState, Kubernetes PodPhase is case-sensitive
+    // This documents the expected behavior
+    assert_eq!(PodPhase::from_str("running"), PodPhase::Unknown); // lowercase
+    assert_eq!(PodPhase::from_str("RUNNING"), PodPhase::Unknown); // uppercase
+    assert_eq!(PodPhase::from_str("Running"), PodPhase::Running); // correct case
+  }
+
+  #[test]
+  fn test_service_info_empty_ports() {
+    let svc = ServiceInfo {
+      name: "headless".to_string(),
+      namespace: "default".to_string(),
+      service_type: "ClusterIP".to_string(),
+      cluster_ip: None, // Headless service
+      external_ips: vec![],
+      ports: vec![], // No ports defined
+      selector: HashMap::new(),
+      age: "1h".to_string(),
+      labels: HashMap::new(),
+    };
+    assert_eq!(svc.ports_display(), "");
+  }
+
+  #[test]
+  fn test_deployment_zero_replicas() {
+    // Scaled down deployment
+    let dep = DeploymentInfo {
+      name: "scaled-down".to_string(),
+      namespace: "default".to_string(),
+      replicas: 0,
+      ready_replicas: 0,
+      updated_replicas: 0,
+      available_replicas: 0,
+      age: "1h".to_string(),
+      labels: HashMap::new(),
+      images: vec!["app:v1".to_string()],
+    };
+    assert_eq!(dep.ready_display(), "0/0");
+  }
+
+  #[test]
+  fn test_pod_with_high_restart_count() {
+    // CrashLoopBackOff scenario
+    let container = PodContainer {
+      name: "crashy".to_string(),
+      image: "buggy:latest".to_string(),
+      ready: false,
+      restart_count: 100,
+    };
+    assert!(!container.ready);
+    assert_eq!(container.restart_count, 100);
+  }
+
+  #[test]
+  fn test_pod_multiple_containers() {
+    // Sidecar pattern: multiple containers in one pod
+    let pod = PodInfo {
+      name: "multi-container".to_string(),
+      namespace: "default".to_string(),
+      phase: PodPhase::Running,
+      ready: "2/3".to_string(), // One container not ready
+      restarts: 5,
+      age: "10m".to_string(),
+      node: Some("node-1".to_string()),
+      ip: Some("10.0.0.5".to_string()),
+      containers: vec![
+        PodContainer {
+          name: "main".to_string(),
+          image: "app:v1".to_string(),
+          ready: true,
+          restart_count: 0,
+        },
+        PodContainer {
+          name: "sidecar".to_string(),
+          image: "envoy:v1".to_string(),
+          ready: true,
+          restart_count: 0,
+        },
+        PodContainer {
+          name: "init-container".to_string(),
+          image: "init:v1".to_string(),
+          ready: false, // Not ready
+          restart_count: 5,
+        },
+      ],
+      labels: HashMap::new(),
+    };
+    assert_eq!(pod.containers.len(), 3);
+    assert_eq!(pod.restarts, 5);
+    assert!(pod.phase.is_running());
+  }
+}

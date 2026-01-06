@@ -498,3 +498,306 @@ impl Default for ColimaConfig {
     }
   }
 }
+
+#[cfg(test)]
+mod tests {
+  use super::*;
+
+  #[test]
+  fn test_vm_status_is_running() {
+    assert!(VmStatus::Running.is_running());
+    assert!(!VmStatus::Stopped.is_running());
+    assert!(!VmStatus::Unknown.is_running());
+  }
+
+  #[test]
+  fn test_vm_status_display() {
+    assert_eq!(format!("{}", VmStatus::Running), "Running");
+    assert_eq!(format!("{}", VmStatus::Stopped), "Stopped");
+    assert_eq!(format!("{}", VmStatus::Unknown), "Unknown");
+  }
+
+  #[test]
+  fn test_vm_status_default() {
+    assert_eq!(VmStatus::default(), VmStatus::Unknown);
+  }
+
+  #[test]
+  fn test_vm_runtime_display() {
+    assert_eq!(format!("{}", VmRuntime::Docker), "docker");
+    assert_eq!(format!("{}", VmRuntime::Containerd), "containerd");
+    assert_eq!(format!("{}", VmRuntime::Incus), "incus");
+  }
+
+  #[test]
+  fn test_vm_runtime_default() {
+    assert_eq!(VmRuntime::default(), VmRuntime::Docker);
+  }
+
+  #[test]
+  fn test_vm_arch_display_name() {
+    assert_eq!(VmArch::Host.display_name(), "Host (native)");
+    assert_eq!(VmArch::Aarch64.display_name(), "ARM64 (aarch64)");
+    assert_eq!(VmArch::X86_64.display_name(), "x86_64");
+  }
+
+  #[test]
+  fn test_vm_arch_display() {
+    assert_eq!(format!("{}", VmArch::Host), "host");
+    assert_eq!(format!("{}", VmArch::Aarch64), "aarch64");
+    assert_eq!(format!("{}", VmArch::X86_64), "x86_64");
+  }
+
+  #[test]
+  fn test_vm_type_display_name() {
+    assert_eq!(VmType::Vz.display_name(), "Apple Virtualization (VZ)");
+    assert_eq!(VmType::Qemu.display_name(), "QEMU");
+  }
+
+  #[test]
+  fn test_vm_type_display() {
+    assert_eq!(format!("{}", VmType::Vz), "vz");
+    assert_eq!(format!("{}", VmType::Qemu), "qemu");
+  }
+
+  #[test]
+  fn test_vm_type_default() {
+    assert_eq!(VmType::default(), VmType::Qemu);
+  }
+
+  #[test]
+  fn test_mount_type_display() {
+    assert_eq!(format!("{}", MountType::Virtiofs), "virtiofs");
+    assert_eq!(format!("{}", MountType::Sshfs), "sshfs");
+    assert_eq!(format!("{}", MountType::NineP), "9p");
+  }
+
+  #[test]
+  fn test_mount_type_default() {
+    assert_eq!(MountType::default(), MountType::Sshfs);
+  }
+
+  #[test]
+  fn test_network_mode_display() {
+    assert_eq!(format!("{}", NetworkMode::Shared), "shared");
+    assert_eq!(format!("{}", NetworkMode::Bridged), "bridged");
+  }
+
+  #[test]
+  fn test_network_mode_default() {
+    assert_eq!(NetworkMode::default(), NetworkMode::Shared);
+  }
+
+  #[test]
+  fn test_port_forwarder_display() {
+    assert_eq!(format!("{}", PortForwarder::Ssh), "ssh");
+    assert_eq!(format!("{}", PortForwarder::Grpc), "grpc");
+  }
+
+  #[test]
+  fn test_port_forwarder_default() {
+    assert_eq!(PortForwarder::default(), PortForwarder::Ssh);
+  }
+
+  #[test]
+  fn test_mount_config_new() {
+    let mount = MountConfig::new("/home/user", true);
+    assert_eq!(mount.location, "/home/user");
+    assert!(mount.writable);
+
+    let readonly = MountConfig::new(String::from("/data"), false);
+    assert_eq!(readonly.location, "/data");
+    assert!(!readonly.writable);
+  }
+
+  #[test]
+  fn test_provision_mode_display() {
+    assert_eq!(format!("{}", ProvisionMode::System), "system");
+    assert_eq!(format!("{}", ProvisionMode::User), "user");
+  }
+
+  #[test]
+  fn test_provision_mode_default() {
+    assert_eq!(ProvisionMode::default(), ProvisionMode::System);
+  }
+
+  #[test]
+  fn test_colima_vm_default() {
+    let vm = ColimaVm::default();
+    assert_eq!(vm.name, "default");
+    assert_eq!(vm.status, VmStatus::Unknown);
+    assert_eq!(vm.runtime, VmRuntime::Docker);
+    assert_eq!(vm.arch, VmArch::Aarch64);
+    assert_eq!(vm.cpus, 2);
+    assert_eq!(vm.memory, 2 * 1024 * 1024 * 1024);
+    assert_eq!(vm.disk, 60 * 1024 * 1024 * 1024);
+    assert!(!vm.kubernetes);
+    assert!(vm.address.is_none());
+  }
+
+  #[test]
+  fn test_colima_vm_memory_gb() {
+    let vm = ColimaVm {
+      memory: 4 * 1024 * 1024 * 1024, // 4 GB
+      ..Default::default()
+    };
+    assert!((vm.memory_gb() - 4.0).abs() < 0.01);
+  }
+
+  #[test]
+  fn test_colima_vm_disk_gb() {
+    let vm = ColimaVm {
+      disk: 100 * 1024 * 1024 * 1024, // 100 GB
+      ..Default::default()
+    };
+    assert!((vm.disk_gb() - 100.0).abs() < 0.01);
+  }
+
+  #[test]
+  fn test_colima_vm_display_driver() {
+    // With driver set
+    let vm_with_driver = ColimaVm {
+      driver: Some("custom-driver".to_string()),
+      ..Default::default()
+    };
+    assert_eq!(vm_with_driver.display_driver(), "custom-driver");
+
+    // Without driver, with vm_type
+    let vm_with_type = ColimaVm {
+      driver: None,
+      vm_type: Some(VmType::Vz),
+      ..Default::default()
+    };
+    assert_eq!(vm_with_type.display_driver(), "Apple Virtualization (VZ)");
+
+    // Without driver or vm_type
+    let vm_unknown = ColimaVm {
+      driver: None,
+      vm_type: None,
+      ..Default::default()
+    };
+    assert_eq!(vm_unknown.display_driver(), "Unknown");
+  }
+
+  #[test]
+  fn test_colima_vm_display_mount_type() {
+    let vm_with_mount = ColimaVm {
+      mount_type: Some(MountType::Virtiofs),
+      ..Default::default()
+    };
+    assert_eq!(vm_with_mount.display_mount_type(), "virtiofs");
+
+    let vm_without_mount = ColimaVm {
+      mount_type: None,
+      ..Default::default()
+    };
+    assert_eq!(vm_without_mount.display_mount_type(), "virtiofs");
+  }
+
+  #[test]
+  fn test_vm_file_entry_display_size() {
+    // Directory
+    let dir = VmFileEntry {
+      name: "test".to_string(),
+      path: "/test".to_string(),
+      is_dir: true,
+      is_symlink: false,
+      size: 4096,
+      permissions: "drwxr-xr-x".to_string(),
+      owner: "root".to_string(),
+      modified: "2024-01-01".to_string(),
+    };
+    assert_eq!(dir.display_size(), "-");
+
+    // Small file (bytes)
+    let small = VmFileEntry {
+      is_dir: false,
+      size: 500,
+      ..dir.clone()
+    };
+    assert_eq!(small.display_size(), "500 B");
+
+    // KB file
+    let kb = VmFileEntry {
+      is_dir: false,
+      size: 1536, // 1.5 KB
+      ..dir.clone()
+    };
+    assert_eq!(kb.display_size(), "1.5 KB");
+
+    // MB file
+    let mb = VmFileEntry {
+      is_dir: false,
+      size: 5 * 1024 * 1024, // 5 MB
+      ..dir.clone()
+    };
+    assert_eq!(mb.display_size(), "5.0 MB");
+
+    // GB file
+    let gb = VmFileEntry {
+      is_dir: false,
+      size: 2 * 1024 * 1024 * 1024, // 2 GB
+      ..dir.clone()
+    };
+    assert_eq!(gb.display_size(), "2.0 GB");
+  }
+
+  #[test]
+  fn test_kubernetes_config_default() {
+    let k8s = KubernetesConfig::default();
+    assert!(!k8s.enabled);
+    assert!(k8s.version.is_empty());
+    assert!(k8s.k3s_args.is_empty());
+    // Port defaults to 0 in struct, serde uses default_k8s_port (6443) during deserialization
+    assert_eq!(k8s.port, 0);
+  }
+
+  #[test]
+  fn test_network_config_default() {
+    let net = NetworkConfig::default();
+    assert!(!net.address);
+    assert_eq!(net.mode, NetworkMode::Shared);
+    assert_eq!(net.interface, "en0");
+    assert!(!net.preferred_route);
+    assert!(net.dns.is_empty());
+    assert!(net.dns_hosts.contains_key("host.docker.internal"));
+    assert!(!net.host_addresses);
+  }
+
+  #[test]
+  fn test_colima_config_default() {
+    let config = ColimaConfig::default();
+    assert_eq!(config.cpu, 2);
+    assert_eq!(config.memory, 2);
+    assert_eq!(config.disk, 100);
+    assert_eq!(config.arch, VmArch::Host);
+    assert_eq!(config.runtime, VmRuntime::Docker);
+    assert!(config.hostname.is_empty());
+    assert!(config.auto_activate);
+    assert!(!config.forward_agent);
+    assert_eq!(config.vm_type, VmType::Qemu);
+    assert_eq!(config.port_forwarder, PortForwarder::Ssh);
+    assert!(!config.rosetta);
+    assert!(config.binfmt);
+    assert!(!config.nested_virtualization);
+    assert_eq!(config.mount_type, MountType::Sshfs);
+    assert!(!config.mount_inotify);
+    assert_eq!(config.cpu_type, "host");
+    assert!(config.provision.is_empty());
+    assert!(config.ssh_config);
+    assert_eq!(config.ssh_port, 0);
+    assert!(config.mounts.is_empty());
+    assert!(config.disk_image.is_empty());
+    assert_eq!(config.root_disk, 20);
+    assert!(config.env.is_empty());
+  }
+
+  #[test]
+  fn test_colima_config_serialization() {
+    let config = ColimaConfig::default();
+    let yaml = serde_yaml::to_string(&config).expect("Failed to serialize");
+    assert!(yaml.contains("cpu: 2"));
+    assert!(yaml.contains("memory: 2"));
+    assert!(yaml.contains("disk: 100"));
+  }
+}

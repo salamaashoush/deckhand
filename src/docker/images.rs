@@ -158,3 +158,112 @@ impl DockerClient {
     }
   }
 }
+
+#[cfg(test)]
+mod tests {
+  use super::*;
+
+  #[test]
+  fn test_image_info_short_id() {
+    // With sha256 prefix
+    let image = ImageInfo {
+      id: "sha256:abc123def456789012345678901234567890".to_string(),
+      repo_tags: vec![],
+      repo_digests: vec![],
+      created: None,
+      size: 0,
+      virtual_size: None,
+      labels: HashMap::new(),
+      architecture: None,
+      os: None,
+    };
+    assert_eq!(image.short_id(), "abc123def456");
+
+    // Without sha256 prefix
+    let image2 = ImageInfo {
+      id: "xyz789012345678901234567890".to_string(),
+      ..image.clone()
+    };
+    assert_eq!(image2.short_id(), "xyz789012345");
+
+    // Short id
+    let short = ImageInfo {
+      id: "sha256:abc".to_string(),
+      ..image.clone()
+    };
+    assert_eq!(short.short_id(), "abc");
+  }
+
+  #[test]
+  fn test_image_info_display_name() {
+    // With tag
+    let image = ImageInfo {
+      id: "sha256:abc123".to_string(),
+      repo_tags: vec!["nginx:latest".to_string(), "nginx:1.25".to_string()],
+      repo_digests: vec![],
+      created: None,
+      size: 0,
+      virtual_size: None,
+      labels: HashMap::new(),
+      architecture: None,
+      os: None,
+    };
+    assert_eq!(image.display_name(), "nginx:latest");
+
+    // Without tag (falls back to short id)
+    let no_tags = ImageInfo {
+      repo_tags: vec![],
+      ..image.clone()
+    };
+    assert_eq!(no_tags.display_name(), "abc123");
+  }
+
+  #[test]
+  fn test_image_info_display_size() {
+    let image = ImageInfo {
+      id: "sha256:abc".to_string(),
+      repo_tags: vec![],
+      repo_digests: vec![],
+      created: None,
+      size: 1024 * 1024 * 150, // 150 MiB
+      virtual_size: None,
+      labels: HashMap::new(),
+      architecture: None,
+      os: None,
+    };
+    assert_eq!(image.display_size(), "150.0 MiB");
+
+    let small = ImageInfo {
+      size: 1024 * 50, // 50 KiB
+      ..image.clone()
+    };
+    assert_eq!(small.display_size(), "50.0 KiB");
+
+    let zero = ImageInfo {
+      size: 0,
+      ..image.clone()
+    };
+    assert_eq!(zero.display_size(), "0 B");
+  }
+
+  #[test]
+  fn test_image_info_with_metadata() {
+    let image = ImageInfo {
+      id: "sha256:abc123".to_string(),
+      repo_tags: vec!["alpine:3.18".to_string()],
+      repo_digests: vec!["alpine@sha256:abc...".to_string()],
+      created: None,
+      size: 5 * 1024 * 1024, // 5 MiB
+      virtual_size: Some(10 * 1024 * 1024),
+      labels: HashMap::from([("maintainer".to_string(), "test@example.com".to_string())]),
+      architecture: Some("amd64".to_string()),
+      os: Some("linux".to_string()),
+    };
+
+    assert_eq!(image.display_name(), "alpine:3.18");
+    assert_eq!(image.display_size(), "5.0 MiB");
+    assert_eq!(image.architecture, Some("amd64".to_string()));
+    assert_eq!(image.os, Some("linux".to_string()));
+    assert_eq!(image.labels.get("maintainer"), Some(&"test@example.com".to_string()));
+  }
+}

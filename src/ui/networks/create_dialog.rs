@@ -150,3 +150,86 @@ impl Render for CreateNetworkDialog {
             )
   }
 }
+
+#[cfg(test)]
+mod tests {
+  use super::*;
+
+  #[test]
+  fn test_create_network_options_default() {
+    let options = CreateNetworkOptions::default();
+    assert!(options.name.is_empty());
+    assert!(!options.enable_ipv6);
+    assert!(options.subnet.is_none());
+  }
+
+  #[test]
+  fn test_create_network_options_with_values() {
+    let options = CreateNetworkOptions {
+      name: "my-network".to_string(),
+      enable_ipv6: true,
+      subnet: Some("172.30.0.0/16".to_string()),
+    };
+    assert_eq!(options.name, "my-network");
+    assert!(options.enable_ipv6);
+    assert_eq!(options.subnet, Some("172.30.0.0/16".to_string()));
+  }
+
+  // GPUI Component Tests
+
+  #[gpui::test]
+  fn test_create_network_dialog_creation(cx: &mut gpui::TestAppContext) {
+    let dialog = cx.new(CreateNetworkDialog::new);
+
+    dialog.read_with(cx, |dialog, _| {
+      assert!(dialog.name_input.is_none()); // Not initialized until render
+      assert!(dialog.subnet_input.is_none());
+      assert!(!dialog.enable_ipv6);
+    });
+  }
+
+  #[gpui::test]
+  fn test_create_network_dialog_toggle_ipv6(cx: &mut gpui::TestAppContext) {
+    let dialog = cx.new(CreateNetworkDialog::new);
+
+    // Initially false
+    dialog.read_with(cx, |dialog, _| {
+      assert!(!dialog.enable_ipv6);
+    });
+
+    // Toggle to true
+    dialog.update(cx, |dialog, _| {
+      dialog.enable_ipv6 = true;
+    });
+
+    dialog.read_with(cx, |dialog, _| {
+      assert!(dialog.enable_ipv6);
+    });
+
+    // Toggle back to false
+    dialog.update(cx, |dialog, _| {
+      dialog.enable_ipv6 = false;
+    });
+
+    dialog.read_with(cx, |dialog, _| {
+      assert!(!dialog.enable_ipv6);
+    });
+  }
+
+  #[gpui::test]
+  fn test_create_network_dialog_state_persistence(cx: &mut gpui::TestAppContext) {
+    let dialog = cx.new(CreateNetworkDialog::new);
+
+    // Set state
+    dialog.update(cx, |dialog, _| {
+      dialog.enable_ipv6 = true;
+    });
+
+    // Read multiple times - state should persist
+    for _ in 0..3 {
+      dialog.read_with(cx, |dialog, _| {
+        assert!(dialog.enable_ipv6);
+      });
+    }
+  }
+}

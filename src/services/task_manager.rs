@@ -18,15 +18,12 @@ pub enum TaskStatus {
 /// A single stage/step within a task
 #[derive(Debug, Clone)]
 pub struct TaskStage {
-  #[allow(dead_code)]
-  pub name: String,
   pub description: String,
 }
 
 impl TaskStage {
-  pub fn new(name: impl Into<String>, description: impl Into<String>) -> Self {
+  pub fn new(description: impl Into<String>) -> Self {
     Self {
-      name: name.into(),
       description: description.into(),
     }
   }
@@ -135,25 +132,6 @@ impl TaskManager {
     }
   }
 
-  /// Set the current stage by index
-  #[allow(dead_code)]
-  pub fn set_stage(&mut self, task_id: u64, stage_index: usize) {
-    if let Some(task) = self.tasks.get_mut(&task_id)
-      && stage_index < task.stages.len()
-    {
-      task.current_stage = stage_index;
-      task.stage_status = None;
-    }
-  }
-
-  /// Update the status message for current stage
-  #[allow(dead_code)]
-  pub fn set_stage_status(&mut self, task_id: u64, status: impl Into<String>) {
-    if let Some(task) = self.tasks.get_mut(&task_id) {
-      task.stage_status = Some(status.into());
-    }
-  }
-
   /// Mark task as completed
   pub fn complete_task(&mut self, task_id: u64) {
     if let Some(task) = self.tasks.get_mut(&task_id) {
@@ -177,12 +155,6 @@ impl TaskManager {
   /// Get all running tasks
   pub fn running_tasks(&self) -> Vec<&Task> {
     self.tasks.values().filter(|t| t.is_running()).collect()
-  }
-
-  /// Get a specific task by ID
-  #[allow(dead_code)]
-  pub fn get_task(&self, task_id: u64) -> Option<&Task> {
-    self.tasks.get(&task_id)
   }
 }
 
@@ -231,26 +203,6 @@ pub fn advance_stage(cx: &mut App, task_id: u64) {
   });
 }
 
-/// Helper to set task stage by index
-#[allow(dead_code)]
-pub fn set_stage(cx: &mut App, task_id: u64, stage_index: usize) {
-  let manager = task_manager(cx);
-  manager.update(cx, |m, cx| {
-    m.set_stage(task_id, stage_index);
-    cx.notify();
-  });
-}
-
-/// Helper to update stage status message
-#[allow(dead_code)]
-pub fn set_stage_status(cx: &mut App, task_id: u64, status: impl Into<String>) {
-  let manager = task_manager(cx);
-  manager.update(cx, |m, cx| {
-    m.set_stage_status(task_id, status);
-    cx.notify();
-  });
-}
-
 /// Helper to complete a task from any context
 pub fn complete_task(cx: &mut App, task_id: u64) {
   let manager = task_manager(cx);
@@ -267,4 +219,233 @@ pub fn fail_task(cx: &mut App, task_id: u64, error: impl Into<String>) {
     m.fail_task(task_id, error);
     cx.notify();
   });
+}
+
+#[cfg(test)]
+mod tests {
+  use super::*;
+
+  #[test]
+  fn test_task_creation() {
+    let task = Task::new("Test task");
+    assert_eq!(task.description, "Test task");
+    assert!(matches!(task.status, TaskStatus::Running));
+    assert!(task.is_running());
+    assert!(task.stages.is_empty());
+    assert_eq!(task.current_stage, 0);
+  }
+
+  #[test]
+  fn test_task_with_stages() {
+    let stages = vec![
+      TaskStage::new("Stage 1"),
+      TaskStage::new("Stage 2"),
+      TaskStage::new("Stage 3"),
+    ];
+    let task = Task::new("Staged task").with_stages(stages);
+
+    assert_eq!(task.stages.len(), 3);
+    assert_eq!(task.current_stage_info().unwrap().description, "Stage 1");
+  }
+
+  #[test]
+  fn test_task_display_status() {
+    // Simple task - returns description
+    let simple_task = Task::new("Simple task");
+    assert_eq!(simple_task.display_status(), "Simple task");
+
+    // Staged task - returns current stage description
+    let stages = vec![TaskStage::new("First stage"), TaskStage::new("Second stage")];
+    let staged_task = Task::new("Staged task").with_stages(stages);
+    assert_eq!(staged_task.display_status(), "First stage");
+  }
+
+  #[test]
+  fn test_task_stage_progress() {
+    // No stages - returns 0.0
+    let no_stages = Task::new("No stages");
+    assert!((no_stages.stage_progress() - 0.0).abs() < 0.01);
+
+    // Single stage - returns 0.0
+    let single_stage = Task::new("Single").with_stages(vec![TaskStage::new("Only one")]);
+    assert!((single_stage.stage_progress() - 0.0).abs() < 0.01);
+
+    // Multiple stages - calculate progress
+    let stages = vec![
+      TaskStage::new("Stage 1"),
+      TaskStage::new("Stage 2"),
+      TaskStage::new("Stage 3"),
+      TaskStage::new("Stage 4"),
+    ];
+    let mut task = Task::new("Multi").with_stages(stages);
+
+    assert!((task.stage_progress() - 0.0).abs() < 0.01); // 0/3
+    task.current_stage = 1;
+    assert!((task.stage_progress() - 0.333).abs() < 0.01); // 1/3
+    task.current_stage = 2;
+    assert!((task.stage_progress() - 0.666).abs() < 0.01); // 2/3
+    task.current_stage = 3;
+    assert!((task.stage_progress() - 1.0).abs() < 0.01); // 3/3
+  }
+
+  #[test]
+  fn test_task_manager_start_task() {
+    let mut manager = TaskManager::new();
+
+    let task_id = manager.start_task("Test task");
+    let tasks = manager.running_tasks();
+
+    assert_eq!(tasks.len(), 1);
+    assert_eq!(tasks[0].id, task_id);
+    assert_eq!(tasks[0].description, "Test task");
+  }
+
+  #[test]
+  fn test_task_manager_complete_task() {
+    let mut manager = TaskManager::new();
+
+    let task_id = manager.start_task("Completing task");
+    assert_eq!(manager.running_tasks().len(), 1);
+
+    manager.complete_task(task_id);
+    assert!(manager.running_tasks().is_empty());
+  }
+
+  #[test]
+  fn test_task_manager_fail_task() {
+    let mut manager = TaskManager::new();
+
+    let task_id = manager.start_task("Failing task");
+    assert_eq!(manager.running_tasks().len(), 1);
+
+    manager.fail_task(task_id, "Something went wrong");
+    assert!(manager.running_tasks().is_empty());
+  }
+
+  #[test]
+  fn test_task_manager_staged_task() {
+    let mut manager = TaskManager::new();
+
+    let stages = vec![
+      TaskStage::new("Preparing..."),
+      TaskStage::new("Downloading..."),
+      TaskStage::new("Installing..."),
+      TaskStage::new("Verifying..."),
+    ];
+
+    let task_id = manager.start_staged_task("Installing package", stages);
+
+    // Initial state
+    let tasks = manager.running_tasks();
+    assert_eq!(tasks[0].stages.len(), 4);
+    assert_eq!(tasks[0].current_stage, 0);
+
+    // Advance stages
+    manager.advance_stage(task_id);
+    let tasks = manager.running_tasks();
+    assert_eq!(tasks[0].current_stage, 1);
+
+    manager.advance_stage(task_id);
+    manager.advance_stage(task_id);
+    let tasks = manager.running_tasks();
+    assert_eq!(tasks[0].current_stage, 3);
+
+    // Should not go past last stage
+    manager.advance_stage(task_id);
+    manager.advance_stage(task_id);
+    let tasks = manager.running_tasks();
+    assert_eq!(tasks[0].current_stage, 3);
+  }
+
+  #[test]
+  fn test_task_manager_multiple_tasks() {
+    let mut manager = TaskManager::new();
+
+    let task1 = manager.start_task("Task 1");
+    let task2 = manager.start_task("Task 2");
+    let task3 = manager.start_task("Task 3");
+
+    assert_eq!(manager.running_tasks().len(), 3);
+
+    manager.complete_task(task2);
+    assert_eq!(manager.running_tasks().len(), 2);
+
+    manager.fail_task(task1, "Error");
+    assert_eq!(manager.running_tasks().len(), 1);
+    assert_eq!(manager.running_tasks()[0].id, task3);
+  }
+
+  #[test]
+  fn test_task_stage_new() {
+    let stage = TaskStage::new("Test stage");
+    assert_eq!(stage.description, "Test stage");
+
+    // Test with String
+    let stage2 = TaskStage::new(String::from("String stage"));
+    assert_eq!(stage2.description, "String stage");
+  }
+
+  // Edge case tests for robustness
+
+  #[test]
+  fn test_complete_nonexistent_task() {
+    let mut manager = TaskManager::new();
+    // Should not panic when completing non-existent task
+    manager.complete_task(99999);
+    assert!(manager.running_tasks().is_empty());
+  }
+
+  #[test]
+  fn test_fail_nonexistent_task() {
+    let mut manager = TaskManager::new();
+    // Should not panic when failing non-existent task
+    manager.fail_task(99999, "Error");
+    assert!(manager.running_tasks().is_empty());
+  }
+
+  #[test]
+  fn test_advance_stage_on_task_without_stages() {
+    let mut manager = TaskManager::new();
+    let task_id = manager.start_task("No stages task");
+
+    // Should not panic when advancing stage on task without stages
+    manager.advance_stage(task_id);
+    let tasks = manager.running_tasks();
+    assert_eq!(tasks[0].current_stage, 0);
+  }
+
+  #[test]
+  fn test_stage_progress_clamping() {
+    // Verify progress is always between 0.0 and 1.0
+    let mut task = Task::new("Test").with_stages(vec![TaskStage::new("Stage 1"), TaskStage::new("Stage 2")]);
+
+    // Even with invalid current_stage, progress should be clamped
+    task.current_stage = 100; // Way beyond stages
+    let progress = task.stage_progress();
+    assert!((0.0..=1.0).contains(&progress));
+  }
+
+  #[test]
+  fn test_task_display_status_priority() {
+    // stage_status takes priority over stage description
+    let mut task = Task::new("Main task").with_stages(vec![TaskStage::new("Stage 1")]);
+
+    // Initially shows stage description
+    assert_eq!(task.display_status(), "Stage 1");
+
+    // After setting stage_status, shows that instead
+    task.stage_status = Some("Custom status".to_string());
+    assert_eq!(task.display_status(), "Custom status");
+  }
+
+  #[test]
+  fn test_task_ids_are_unique() {
+    let task1 = Task::new("Task 1");
+    let task2 = Task::new("Task 2");
+    let task3 = Task::new("Task 3");
+
+    assert_ne!(task1.id, task2.id);
+    assert_ne!(task2.id, task3.id);
+    assert_ne!(task1.id, task3.id);
+  }
 }

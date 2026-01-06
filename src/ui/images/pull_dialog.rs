@@ -195,3 +195,110 @@ impl Render for PullImageDialog {
             ))
   }
 }
+
+#[cfg(test)]
+mod tests {
+  use super::*;
+
+  // Pure function tests
+
+  #[test]
+  fn test_pull_platform_label() {
+    assert_eq!(PullPlatform::Default.label(), "Default");
+    assert_eq!(PullPlatform::LinuxAmd64.label(), "linux/amd64");
+    assert_eq!(PullPlatform::LinuxArm64.label(), "linux/arm64");
+  }
+
+  #[test]
+  fn test_pull_platform_as_docker_arg() {
+    assert_eq!(PullPlatform::Default.as_docker_arg(), None);
+    assert_eq!(PullPlatform::LinuxAmd64.as_docker_arg(), Some("linux/amd64"));
+    assert_eq!(PullPlatform::LinuxArm64.as_docker_arg(), Some("linux/arm64"));
+  }
+
+  #[test]
+  fn test_pull_platform_all() {
+    let all = PullPlatform::all();
+    assert_eq!(all.len(), 3);
+    assert!(all.contains(&PullPlatform::Default));
+    assert!(all.contains(&PullPlatform::LinuxAmd64));
+    assert!(all.contains(&PullPlatform::LinuxArm64));
+  }
+
+  #[test]
+  fn test_pull_platform_default() {
+    assert_eq!(PullPlatform::default(), PullPlatform::Default);
+  }
+
+  #[test]
+  fn test_pull_image_options_default() {
+    let options = PullImageOptions::default();
+    assert!(options.image.is_empty());
+    assert_eq!(options.platform, PullPlatform::Default);
+  }
+
+  #[test]
+  fn test_pull_platform_select_item() {
+    let platform = PullPlatform::LinuxAmd64;
+    assert_eq!(platform.title().as_ref(), "linux/amd64");
+    assert_eq!(*platform.value(), PullPlatform::LinuxAmd64);
+  }
+
+  // GPUI Component Tests
+
+  #[gpui::test]
+  fn test_pull_image_dialog_creation(cx: &mut gpui::TestAppContext) {
+    let dialog = cx.new(PullImageDialog::new);
+
+    dialog.read_with(cx, |dialog, _| {
+      // Inputs are lazily initialized on render
+      assert!(dialog.image_input.is_none());
+      assert!(dialog.platform_select.is_none());
+    });
+  }
+
+  #[gpui::test]
+  fn test_pull_image_dialog_focus_handle(cx: &mut gpui::TestAppContext) {
+    let dialog = cx.new(PullImageDialog::new);
+
+    // Verify focus handle can be obtained
+    cx.update(|cx| {
+      let _handle = dialog.read(cx).focus_handle(cx);
+      // Focus handle should exist and be valid
+    });
+  }
+
+  #[gpui::test]
+  fn test_pull_image_dialog_initial_state(cx: &mut gpui::TestAppContext) {
+    let dialog = cx.new(PullImageDialog::new);
+
+    // Before render, inputs should not be initialized (lazy init)
+    dialog.read_with(cx, |dialog, _| {
+      assert!(dialog.image_input.is_none());
+      assert!(dialog.platform_select.is_none());
+    });
+  }
+
+  #[gpui::test]
+  fn test_pull_image_dialog_update_state(cx: &mut gpui::TestAppContext) {
+    let dialog = cx.new(PullImageDialog::new);
+
+    // Verify we can update state
+    dialog.update(cx, |_dialog, cx| {
+      // Just verify we can update without panicking
+      cx.notify();
+    });
+  }
+
+  #[gpui::test]
+  fn test_pull_image_dialog_multiple_reads(cx: &mut gpui::TestAppContext) {
+    let dialog = cx.new(PullImageDialog::new);
+
+    // Multiple reads should work consistently
+    for _ in 0..3 {
+      dialog.read_with(cx, |dialog, _| {
+        assert!(dialog.image_input.is_none());
+      });
+    }
+  }
+}

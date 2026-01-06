@@ -246,3 +246,143 @@ pub fn init_settings(cx: &mut App) {
 pub fn settings_state(cx: &App) -> Entity<SettingsState> {
   cx.global::<GlobalSettingsState>().0.clone()
 }
+
+#[cfg(test)]
+mod tests {
+  use super::*;
+
+  #[test]
+  fn test_theme_name_default() {
+    assert_eq!(ThemeName::default(), ThemeName::TokyoNight);
+  }
+
+  #[test]
+  fn test_theme_name_all_returns_all_variants() {
+    let themes = ThemeName::all();
+    // Should have a reasonable number of themes
+    assert!(themes.len() >= 30);
+
+    // Should include default theme
+    assert!(themes.contains(&ThemeName::TokyoNight));
+
+    // Should include dark themes
+    assert!(themes.contains(&ThemeName::GruvboxDark));
+    assert!(themes.contains(&ThemeName::CatppuccinMocha));
+
+    // Should include light themes
+    assert!(themes.contains(&ThemeName::GruvboxLight));
+    assert!(themes.contains(&ThemeName::CatppuccinLatte));
+  }
+
+  #[test]
+  fn test_theme_name_all_no_duplicates() {
+    let themes = ThemeName::all();
+    let mut seen: Vec<ThemeName> = themes.clone();
+    seen.sort_by(|a, b| format!("{a:?}").cmp(&format!("{b:?}")));
+    seen.dedup();
+    assert_eq!(themes.len(), seen.len(), "all() should not contain duplicates");
+  }
+
+  #[test]
+  fn test_theme_name_display_name() {
+    assert_eq!(ThemeName::TokyoNight.display_name(), "Tokyo Night");
+    assert_eq!(ThemeName::TokyoStorm.display_name(), "Tokyo Storm");
+    assert_eq!(ThemeName::CatppuccinMocha.display_name(), "Catppuccin Mocha");
+    assert_eq!(ThemeName::GruvboxDark.display_name(), "Gruvbox Dark");
+    assert_eq!(ThemeName::GruvboxLight.display_name(), "Gruvbox Light");
+    assert_eq!(ThemeName::Matrix.display_name(), "Matrix");
+  }
+
+  #[test]
+  fn test_theme_name_theme_name_equals_display_name() {
+    // theme_name() should return the same as display_name()
+    for theme in ThemeName::all() {
+      assert_eq!(theme.theme_name(), theme.display_name());
+    }
+  }
+
+  #[test]
+  fn test_app_settings_default() {
+    let settings = AppSettings::default();
+    assert_eq!(settings.theme, ThemeName::TokyoNight);
+    assert!(settings.docker_socket.is_empty());
+    assert_eq!(settings.default_colima_profile, "default");
+    assert_eq!(settings.container_refresh_interval, 5);
+    assert_eq!(settings.stats_refresh_interval, 2);
+    assert_eq!(settings.max_log_lines, 1000);
+    assert!((settings.terminal_font_size - 14.0).abs() < 0.01);
+  }
+
+  #[test]
+  fn test_app_settings_serialization() {
+    let settings = AppSettings::default();
+    let json = serde_json::to_string(&settings).expect("Failed to serialize");
+
+    // Should contain expected fields
+    assert!(json.contains("theme"));
+    assert!(json.contains("docker_socket"));
+    assert!(json.contains("container_refresh_interval"));
+
+    // Should be able to deserialize back
+    let deserialized: AppSettings = serde_json::from_str(&json).expect("Failed to deserialize");
+    assert_eq!(deserialized.theme, settings.theme);
+    assert_eq!(deserialized.max_log_lines, settings.max_log_lines);
+  }
+
+  #[test]
+  fn test_app_settings_custom_values() {
+    let settings = AppSettings {
+      theme: ThemeName::GruvboxDark,
+      docker_socket: "/custom/docker.sock".to_string(),
+      default_colima_profile: "dev".to_string(),
+      container_refresh_interval: 10,
+      stats_refresh_interval: 5,
+      max_log_lines: 5000,
+      terminal_font_size: 16.0,
+    };
+
+    assert_eq!(settings.theme, ThemeName::GruvboxDark);
+    assert_eq!(settings.docker_socket, "/custom/docker.sock");
+    assert_eq!(settings.default_colima_profile, "dev");
+    assert_eq!(settings.container_refresh_interval, 10);
+  }
+
+  #[test]
+  fn test_settings_changed_variants() {
+    // Just verify all variants can be created
+    let _ = SettingsChanged::ThemeChanged;
+    let _ = SettingsChanged::SettingsUpdated;
+  }
+
+  #[test]
+  fn test_theme_name_serialization() {
+    // Test that themes serialize/deserialize correctly
+    let theme = ThemeName::CatppuccinMocha;
+    let json = serde_json::to_string(&theme).expect("Failed to serialize");
+    let deserialized: ThemeName = serde_json::from_str(&json).expect("Failed to deserialize");
+    assert_eq!(deserialized, theme);
+  }
+
+  #[test]
+  fn test_all_themes_have_display_names() {
+    for theme in ThemeName::all() {
+      let name = theme.display_name();
+      assert!(!name.is_empty(), "Theme {theme:?} should have a display name");
+    }
+  }
+
+  #[test]
+  fn test_dark_themes_listed_first() {
+    let themes = ThemeName::all();
+    // First theme should be Tokyo Night (dark)
+    assert_eq!(themes[0], ThemeName::TokyoNight);
+
+    // Light themes should be near the end
+    let latte_pos = themes.iter().position(|t| *t == ThemeName::CatppuccinLatte);
+    let mocha_pos = themes.iter().position(|t| *t == ThemeName::CatppuccinMocha);
+    assert!(
+      mocha_pos < latte_pos,
+      "Dark themes (Mocha) should come before light themes (Latte)"
+    );
+  }
+}
