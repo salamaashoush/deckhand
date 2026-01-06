@@ -272,9 +272,6 @@ impl MachineDetail {
       ]
     };
 
-    // Get cache size (global Colima info)
-    let cache_size = crate::colima::ColimaClient::cache_size().unwrap_or_else(|_| "Unknown".to_string());
-
     let mut container = v_flex()
       .flex_1()
       .w_full()
@@ -282,12 +279,7 @@ impl MachineDetail {
       .gap(px(12.))
       .child(Self::render_section(None, basic_info, cx))
       .child(Self::render_version_section(&version_info, cx))
-      .child(Self::render_section(Some("Operating System"), image_info, cx))
-      .child(Self::render_section(
-        Some("System"),
-        vec![("Cache Size", cache_size)],
-        cx,
-      ));
+      .child(Self::render_section(Some("Operating System"), image_info, cx));
 
     // Kubernetes status section with icon (if enabled)
     if machine.kubernetes {

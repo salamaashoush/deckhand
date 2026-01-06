@@ -684,6 +684,46 @@ impl ColimaClient {
 
     Self::run_command(name, &command)
   }
+
+  /// Get the path to the default template file
+  pub fn template_path() -> std::path::PathBuf {
+    let home = dirs::home_dir().unwrap_or_default();
+    home.join(".colima").join("_templates").join("default.yaml")
+  }
+
+  /// Read the default template content
+  /// First tries to read from ~/.colima/_templates/default.yaml
+  /// Falls back to `colima template --print` if file doesn't exist
+  pub fn read_template() -> Result<String> {
+    let path = Self::template_path();
+
+    // Try reading from file first
+    if path.exists()
+      && let Ok(content) = std::fs::read_to_string(&path)
+    {
+      return Ok(content);
+    }
+
+    // Fall back to colima template --print
+    let mut cmd = colima_cmd();
+    cmd.args(["template", "--print"]);
+    let output = cmd.stdout(Stdio::piped()).stderr(Stdio::piped()).output()?;
+
+    if output.status.success() {
+      Ok(String::from_utf8_lossy(&output.stdout).to_string())
+    } else {
+      Err(anyhow!("Failed to read template"))
+    }
+  }
+
+  /// Write the default template content
+  pub fn write_template(content: &str) -> Result<()> {
+    let path = Self::template_path();
+    if let Some(parent) = path.parent() {
+      std::fs::create_dir_all(parent)?;
+    }
+    std::fs::write(&path, content).map_err(|e| anyhow!("Failed to write template: {e}"))
+  }
 }
 
 impl Default for ColimaClient {

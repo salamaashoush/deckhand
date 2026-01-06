@@ -1,6 +1,6 @@
 use gpui::{Context, Entity, Render, SharedString, Styled, Window, div, prelude::*, px};
 use gpui_component::{
-  IconName, IndexPath, Sizable,
+  Disableable, IconName, IndexPath, Sizable, WindowExt,
   button::{Button, ButtonVariants},
   h_flex,
   input::{Input, InputState},
@@ -12,6 +12,7 @@ use gpui_component::{
 };
 
 use crate::assets::AppIcon;
+use crate::colima::ColimaClient;
 use crate::state::{SettingsChanged, SettingsState, ThemeName, settings_state};
 
 /// Theme wrapper for Select
@@ -57,11 +58,17 @@ pub struct SettingsView {
   font_size_input: Option<Entity<InputState>>,
   initialized: bool,
   last_theme_index: Option<usize>,
+  // Colima cache state
+  cache_size: String,
+  is_pruning: bool,
 }
 
 impl SettingsView {
   pub fn new(cx: &mut Context<'_, Self>) -> Self {
     let settings_state = settings_state(cx);
+
+    // Get initial cache size
+    let cache_size = ColimaClient::cache_size().unwrap_or_else(|_| "Unknown".to_string());
 
     Self {
       settings_state,
@@ -74,6 +81,8 @@ impl SettingsView {
       font_size_input: None,
       initialized: false,
       last_theme_index: None,
+      cache_size,
+      is_pruning: false,
     }
   }
 
@@ -285,6 +294,176 @@ impl SettingsView {
       )
       .child(div().w(px(250.)).child(content))
   }
+
+  fn render_colima_section(&self, cx: &Context<'_, Self>) -> impl IntoElement {
+    let colors = cx.theme().colors;
+    let cache_size = self.cache_size.clone();
+    let is_pruning = self.is_pruning;
+
+    v_flex()
+      .w_full()
+      .gap(px(4.))
+      // Cache row
+      .child(
+        h_flex()
+          .w_full()
+          .py(px(12.))
+          .justify_between()
+          .items_center()
+          .gap(px(16.))
+          .border_b_1()
+          .border_color(colors.border.opacity(0.5))
+          .child(
+            v_flex()
+              .flex_1()
+              .gap(px(2.))
+              .child(Label::new("Cache Size").text_color(colors.foreground))
+              .child(
+                div()
+                  .text_xs()
+                  .text_color(colors.muted_foreground)
+                  .child("Downloaded VM images and assets"),
+              ),
+          )
+          .child(
+            h_flex().gap(px(8.)).items_center().child(
+              div()
+                .text_sm()
+                .text_color(colors.foreground)
+                .child(cache_size),
+            )
+            .child(
+              Button::new("prune-cache")
+                .label(if is_pruning { "Pruning..." } else { "Prune" })
+                .small()
+                .ghost()
+                .disabled(is_pruning)
+                .on_click(cx.listener(|this, _ev, _window, cx| {
+                  this.prune_cache(cx);
+                })),
+            ),
+          ),
+      )
+      // Template row
+      .child(
+        h_flex()
+          .w_full()
+          .py(px(12.))
+          .justify_between()
+          .items_center()
+          .gap(px(16.))
+          .border_b_1()
+          .border_color(colors.border.opacity(0.5))
+          .child(
+            v_flex()
+              .flex_1()
+              .gap(px(2.))
+              .child(Label::new("Default Template").text_color(colors.foreground))
+              .child(
+                div()
+                  .text_xs()
+                  .text_color(colors.muted_foreground)
+                  .child("Default configuration for new Colima VMs"),
+              ),
+          )
+          .child(
+            Button::new("edit-template")
+              .label("Edit")
+              .icon(AppIcon::Edit)
+              .small()
+              .ghost()
+              .on_click(cx.listener(|this, _ev, window, cx| {
+                this.open_template_editor(window, cx);
+              })),
+          ),
+      )
+  }
+
+  fn prune_cache(&mut self, cx: &mut Context<'_, Self>) {
+    if self.is_pruning {
+      return;
+    }
+    self.is_pruning = true;
+    cx.notify();
+
+    cx.spawn(async move |this, cx| {
+      let result = cx
+        .background_executor()
+        .spawn(async { ColimaClient::prune(false, true) })
+        .await;
+
+      cx.update(|cx| {
+        this.update(cx, |this, cx| {
+          this.is_pruning = false;
+          match result {
+            Ok(_) => {
+              // Refresh cache size after prune
+              this.cache_size = ColimaClient::cache_size().unwrap_or_else(|_| "Unknown".to_string());
+            }
+            Err(e) => {
+              tracing::error!("Failed to prune cache: {e}");
+            }
+          }
+          cx.notify();
+        })
+      })
+    })
+    .detach();
+  }
+
+  #[allow(clippy::unused_self)]
+  fn open_template_editor(&self, window: &mut Window, cx: &mut Context<'_, Self>) {
+    // Read current template
+    let template_content = ColimaClient::read_template().unwrap_or_default();
+    let template_input = cx.new(|cx| {
+      InputState::new(window, cx)
+        .multi_line(true)
+        .code_editor("yaml")
+        .line_number(true)
+        .default_value(template_content)
+    });
+
+    window.open_dialog(cx, move |dialog, _window, cx| {
+      let colors = cx.theme().colors;
+      let template_clone = template_input.clone();
+
+      dialog
+        .title("Edit Default Template")
+        .width(px(700.))
+        .child(
+          v_flex()
+            .gap(px(8.))
+            .child(
+              div()
+                .text_xs()
+                .text_color(colors.muted_foreground)
+                .child("This template is used as the default configuration when creating new Colima VMs."),
+            )
+            .child(div().h(px(400.)).child(Input::new(&template_input).w_full().h_full())),
+        )
+        .footer(move |_, _, _, _| {
+          let template_for_save = template_clone.clone();
+          vec![
+            Button::new("cancel-template")
+              .label("Cancel")
+              .ghost()
+              .on_click(|_, window, cx| {
+                window.close_dialog(cx);
+              }),
+            Button::new("save-template")
+              .label("Save")
+              .primary()
+              .on_click(move |_, window, cx| {
+                let content = template_for_save.read(cx).text().to_string();
+                if let Err(e) = ColimaClient::write_template(&content) {
+                  tracing::error!("Failed to save template: {e}");
+                }
+                window.close_dialog(cx);
+              }),
+          ]
+        })
+    });
+  }
 }
 
 impl Render for SettingsView {
@@ -364,6 +543,9 @@ impl Render for SettingsView {
                     Input::new(font_size_input).small().w_full(),
                     cx,
                 ))
+                // Colima section
+                .child(Self::render_section_header("Colima", cx))
+                .child(self.render_colima_section(cx))
     } else {
       v_flex().child("Loading...")
     };
