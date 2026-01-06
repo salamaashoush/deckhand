@@ -87,11 +87,30 @@ impl SettingsView {
     // Find the current theme index
     let themes = ThemeOption::all();
     let current_theme_idx = themes.iter().position(|t| t.theme == settings.theme).unwrap_or(0);
-
     self.last_theme_index = Some(current_theme_idx);
 
-    self.theme_select =
-      Some(cx.new(|cx| SelectState::new(themes, Some(IndexPath::new(current_theme_idx)), window, cx)));
+    let theme_select = cx.new(|cx| SelectState::new(themes, Some(IndexPath::new(current_theme_idx)), window, cx));
+
+    // Subscribe to theme selection changes to apply theme preview
+    cx.subscribe(
+      &theme_select,
+      |this, select, _event: &gpui_component::select::SelectEvent<Vec<ThemeOption>>, cx| {
+        let current_index = select.read(cx).selected_index(cx).map(|idx| idx.row);
+        if current_index != this.last_theme_index {
+          this.last_theme_index = current_index;
+          // Apply the theme immediately for preview
+          if let Some(theme_opt) = select.read(cx).selected_value() {
+            let theme_name = SharedString::from(theme_opt.theme.theme_name().to_string());
+            if let Some(theme_config) = ThemeRegistry::global(cx).themes().get(&theme_name).cloned() {
+              Theme::global_mut(cx).apply_config(&theme_config);
+            }
+          }
+        }
+      },
+    )
+    .detach();
+
+    self.theme_select = Some(theme_select);
 
     self.docker_socket_input = Some(cx.new(|cx| {
       InputState::new(window, cx)
@@ -118,28 +137,6 @@ impl SettingsView {
       Some(cx.new(|cx| InputState::new(window, cx).default_value(settings.terminal_font_size.to_string())));
 
     self.initialized = true;
-  }
-
-  fn check_and_apply_theme(&mut self, cx: &mut Context<'_, Self>) {
-    let Some(theme_select) = &self.theme_select else {
-      return;
-    };
-
-    // Check if theme selection changed
-    let current_index = theme_select.read(cx).selected_index(cx).map(|idx| idx.row);
-
-    if current_index != self.last_theme_index {
-      self.last_theme_index = current_index;
-
-      // Apply the theme immediately
-      if let Some(theme_opt) = theme_select.read(cx).selected_value() {
-        let theme_name = SharedString::from(theme_opt.theme.theme_name().to_string());
-        if let Some(theme_config) = ThemeRegistry::global(cx).themes().get(&theme_name).cloned() {
-          Theme::global_mut(cx).apply_config(&theme_config);
-          cx.notify();
-        }
-      }
-    }
   }
 
   fn reset_to_defaults(&mut self, window: &mut Window, cx: &mut Context<'_, Self>) {
@@ -293,9 +290,6 @@ impl SettingsView {
 impl Render for SettingsView {
   fn render(&mut self, window: &mut Window, cx: &mut Context<'_, Self>) -> impl IntoElement {
     self.ensure_initialized(window, cx);
-
-    // Check if theme changed and apply immediately
-    self.check_and_apply_theme(cx);
 
     let colors = cx.theme().colors;
 

@@ -870,12 +870,9 @@ impl Render for DocksideApp {
       .size_full()
       .bg(background)
       .overflow_hidden()
-      // Regain focus when clicking on the main app area
-      .on_click(cx.listener(|this, _, window, _cx| {
-        if this.command_palette.is_none() && this.global_search.is_none() {
-          this.focus_handle.focus(window);
-        }
-      }))
+      // Note: Removed on_click that was stealing focus from inputs.
+      // The track_focus above handles keyboard shortcuts when the app is focused.
+      // Focus is restored via subscribe handlers when command_palette/global_search close.
       // Navigation action handlers
       .on_action(cx.listener(|_this, _: &GoToContainers, _window, cx| {
         crate::services::set_view(CurrentView::Containers, cx);
