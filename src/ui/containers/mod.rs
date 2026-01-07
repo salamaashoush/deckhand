@@ -3,5 +3,5 @@ mod detail;
 mod list;
 mod view;
 
-pub use create_dialog::CreateContainerOptions;
+pub use create_dialog::{CreateContainerDialog, CreateContainerOptions};
 pub use view::ContainersView;

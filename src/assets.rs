@@ -8,6 +8,8 @@ use std::borrow::Cow;
 #[derive(RustEmbed)]
 #[folder = "assets"]
 #[include = "icons/**/*.svg"]
+#[include = "icon.svg"]
+#[include = "icon.png"]
 pub struct ProjectAssets;
 
 /// Combined asset source that loads from both gpui-component and project assets

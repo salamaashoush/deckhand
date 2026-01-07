@@ -907,9 +907,17 @@ impl Render for DocksideApp {
       .on_action(cx.listener(|_this, _: &GoToSettings, _window, cx| {
         crate::services::set_view(CurrentView::Settings, cx);
       }))
+      // About dialog
+      .on_action(cx.listener(|_this, _: &crate::menus::About, window, cx| {
+        dialogs::open_about_dialog(window, cx);
+      }))
       // Common action handlers
-      .on_action(cx.listener(|_this, _: &Refresh, _window, cx| {
+      .on_action(cx.listener(|_this, _: &Refresh, window, cx| {
         crate::services::load_initial_data(cx);
+        window.push_notification(
+          (NotificationType::Success, SharedString::from("Refreshed")),
+          cx,
+        );
       }))
       .on_action(cx.listener(|this, _: &ShowKeyboardShortcuts, _window, cx| {
         this.toggle_shortcuts_overlay(cx);
@@ -922,8 +930,7 @@ impl Render for DocksideApp {
         let current_view = this.docker_state.read(cx).current_view;
         match current_view {
           CurrentView::Containers => {
-            // For containers, guide user to pull an image first
-            dialogs::open_pull_image_dialog(window, cx);
+            dialogs::open_create_container_dialog(window, cx);
           }
           CurrentView::Images => {
             dialogs::open_pull_image_dialog(window, cx);

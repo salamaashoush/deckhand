@@ -4,15 +4,17 @@
 //! and actions pre-configured. Call these functions from anywhere (views, command
 //! palette, menu bar) to open a fully functional dialog.
 
-use gpui::{App, AppContext, IntoElement, ParentElement, Styled, Window, px};
+use gpui::{App, AppContext, IntoElement, ParentElement, Styled, Window, div, px};
 use gpui_component::{
   WindowExt,
   button::{Button, ButtonVariants},
+  h_flex,
   theme::ActiveTheme,
   v_flex,
 };
 
 use crate::services;
+use crate::ui::containers::CreateContainerDialog;
 use crate::ui::deployments::create_dialog::CreateDeploymentDialog;
 use crate::ui::images::pull_dialog::PullImageDialog;
 use crate::ui::machines::MachineDialog;
@@ -44,6 +46,54 @@ pub fn open_pull_image_dialog(window: &mut Window, cx: &mut App) {
                 let options = dialog.read(cx).get_options(cx);
                 if !options.image.is_empty() {
                   services::pull_image(options.image, options.platform.as_docker_arg().map(String::from), cx);
+                  window.close_dialog(cx);
+                }
+              }
+            })
+            .into_any_element(),
+        ]
+      })
+  });
+}
+
+/// Opens the Create Container dialog with Create and Run buttons configured
+pub fn open_create_container_dialog(window: &mut Window, cx: &mut App) {
+  let dialog_entity = cx.new(CreateContainerDialog::new);
+
+  window.open_dialog(cx, move |dialog, _window, _cx| {
+    let dialog_clone = dialog_entity.clone();
+
+    dialog
+      .title("Create Container")
+      .min_w(px(600.))
+      .child(dialog_entity.clone())
+      .footer(move |_dialog_state, _, _window, _cx| {
+        let dialog_for_create = dialog_clone.clone();
+        let dialog_for_run = dialog_clone.clone();
+        vec![
+          Button::new("create")
+            .label("Create")
+            .ghost()
+            .on_click({
+              let dialog = dialog_for_create.clone();
+              move |_ev, window, cx| {
+                let options = dialog.read(cx).get_options(cx, false);
+                if !options.image.is_empty() {
+                  services::create_container(options, cx);
+                  window.close_dialog(cx);
+                }
+              }
+            })
+            .into_any_element(),
+          Button::new("run")
+            .label("Run")
+            .primary()
+            .on_click({
+              let dialog = dialog_for_run.clone();
+              move |_ev, window, cx| {
+                let options = dialog.read(cx).get_options(cx, true);
+                if !options.image.is_empty() {
+                  services::create_container(options, cx);
                   window.close_dialog(cx);
                 }
               }
@@ -105,7 +155,7 @@ pub fn open_create_network_dialog(window: &mut Window, cx: &mut App) {
       .child(
         v_flex()
           .gap(px(8.))
-          .child(gpui::div().text_sm().text_color(colors.muted_foreground).child(
+          .child(div().text_sm().text_color(colors.muted_foreground).child(
             "Networks are groups of containers in the same subnet (IP range) that can communicate with each other.",
           ))
           .child(dialog_entity.clone()),
@@ -263,5 +313,105 @@ pub fn open_prune_dialog(window: &mut Window, cx: &mut App) {
             .into_any_element(),
         ]
       })
+  });
+}
+
+/// Opens the About Dockside dialog
+pub fn open_about_dialog(window: &mut Window, cx: &mut App) {
+  use gpui::{ImageSource, Resource, SharedString, img};
+
+  window.open_dialog(cx, move |dialog, _window, cx| {
+    let colors = cx.theme().colors;
+    let version = env!("CARGO_PKG_VERSION");
+
+    dialog.title("About").min_w(px(420.)).child(
+      v_flex()
+        .w_full()
+        .gap(px(20.))
+        .p(px(24.))
+        // Logo and title
+        .child(
+          h_flex()
+            .gap(px(16.))
+            .items_center()
+            .child(
+              img(ImageSource::Resource(Resource::Embedded(SharedString::from("icon.png"))))
+                .size(px(64.))
+            )
+            .child(
+              v_flex()
+                .gap(px(4.))
+                .child(
+                  div()
+                    .text_xl()
+                    .font_weight(gpui::FontWeight::BOLD)
+                    .text_color(colors.foreground)
+                    .child("Dockside"),
+                )
+                .child(
+                  div()
+                    .text_sm()
+                    .text_color(colors.muted_foreground)
+                    .child(format!("Version {version}")),
+                ),
+            ),
+        )
+        // Description
+        .child(
+          div()
+            .text_sm()
+            .text_color(colors.foreground)
+            .child("A fast, native desktop application for managing Docker containers, images, volumes, networks, and Kubernetes resources. Built for macOS with GPUI."),
+        )
+        // Required tools section
+        .child(
+          v_flex()
+            .gap(px(8.))
+            .child(
+              div()
+                .text_xs()
+                .font_weight(gpui::FontWeight::SEMIBOLD)
+                .text_color(colors.muted_foreground)
+                .child("REQUIRED TOOLS"),
+            )
+            .child(
+              v_flex()
+                .gap(px(4.))
+                .text_sm()
+                .text_color(colors.foreground)
+                .child(
+                  h_flex()
+                    .gap(px(8.))
+                    .child(div().text_color(colors.primary).child("Docker"))
+                    .child(div().text_color(colors.muted_foreground).child("Container runtime")),
+                )
+                .child(
+                  h_flex()
+                    .gap(px(8.))
+                    .child(div().text_color(colors.primary).child("Colima"))
+                    .child(div().text_color(colors.muted_foreground).child("Virtual machines on macOS")),
+                )
+                .child(
+                  h_flex()
+                    .gap(px(8.))
+                    .child(div().text_color(colors.primary).child("kubectl"))
+                    .child(div().text_color(colors.muted_foreground).child("Kubernetes CLI (optional)")),
+                ),
+            ),
+        )
+        // Footer
+        .child(
+          div()
+            .pt(px(8.))
+            .border_t_1()
+            .border_color(colors.border)
+            .child(
+              div()
+                .text_xs()
+                .text_color(colors.muted_foreground)
+                .child("Built with GPUI framework"),
+            ),
+        ),
+    )
   });
 }

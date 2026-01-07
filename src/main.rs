@@ -1,10 +1,10 @@
-mod actions;
 mod app;
 mod assets;
 mod colima;
 mod docker;
 mod keybindings;
 mod kubernetes;
+mod menus;
 mod services;
 mod state;
 mod terminal;
@@ -168,6 +168,12 @@ fn main() {
     // Register keyboard shortcuts
     keybindings::register_keybindings(cx);
 
+    // Set up native menu bar
+    cx.set_menus(menus::app_menus());
+
+    // Register menu action handlers
+    register_menu_actions(cx);
+
     // Register command palette keybindings
     ui::command_palette::init(cx);
 
@@ -271,4 +277,22 @@ fn handle_tray_menu_event(id: &str, cx: &mut App) {
     }
     _ => {}
   }
+}
+
+/// Register handlers for native menu actions
+fn register_menu_actions(cx: &mut App) {
+  cx.on_action(|_: &menus::Quit, cx| {
+    services::stop_watchers(cx);
+    cx.quit();
+  });
+
+  cx.on_action(|_: &menus::CloseWindow, cx| {
+    if let Some(window) = cx.active_window() {
+      window
+        .update(cx, |_, window, _cx| {
+          window.remove_window();
+        })
+        .ok();
+    }
+  });
 }
