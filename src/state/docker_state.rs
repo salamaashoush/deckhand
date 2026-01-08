@@ -53,15 +53,17 @@ pub enum ContainerDetailTab {
   #[default]
   Info = 0,
   Logs = 1,
-  Terminal = 2,
-  Files = 3,
-  Inspect = 4,
+  Processes = 2,
+  Terminal = 3,
+  Files = 4,
+  Inspect = 5,
 }
 
 impl ContainerDetailTab {
-  pub const ALL: [ContainerDetailTab; 5] = [
+  pub const ALL: [ContainerDetailTab; 6] = [
     ContainerDetailTab::Info,
     ContainerDetailTab::Logs,
+    ContainerDetailTab::Processes,
     ContainerDetailTab::Terminal,
     ContainerDetailTab::Files,
     ContainerDetailTab::Inspect,
@@ -71,6 +73,7 @@ impl ContainerDetailTab {
     match self {
       ContainerDetailTab::Info => "Info",
       ContainerDetailTab::Logs => "Logs",
+      ContainerDetailTab::Processes => "Processes",
       ContainerDetailTab::Terminal => "Terminal",
       ContainerDetailTab::Files => "Files",
       ContainerDetailTab::Inspect => "Inspect",
@@ -649,9 +652,10 @@ mod tests {
 
   #[test]
   fn test_container_detail_tab() {
-    assert_eq!(ContainerDetailTab::ALL.len(), 5);
+    assert_eq!(ContainerDetailTab::ALL.len(), 6);
     assert_eq!(ContainerDetailTab::Info.label(), "Info");
     assert_eq!(ContainerDetailTab::Logs.label(), "Logs");
+    assert_eq!(ContainerDetailTab::Processes.label(), "Processes");
     assert_eq!(ContainerDetailTab::Terminal.label(), "Terminal");
     assert_eq!(ContainerDetailTab::Files.label(), "Files");
     assert_eq!(ContainerDetailTab::Inspect.label(), "Inspect");

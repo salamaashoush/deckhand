@@ -588,6 +588,15 @@ impl DockerClient {
       .await;
     Ok(output.map(|s| s.contains("dir")).unwrap_or(false))
   }
+
+  /// Get running processes in a container using ps aux inside the container
+  /// This uses docker exec to get PIDs from the container's namespace,
+  /// which allows us to kill processes using those same PIDs
+  pub async fn get_container_processes(&self, id: &str) -> Result<String> {
+    // Use docker exec to run ps aux inside the container
+    // This gives us PIDs in the container's namespace, which is what we need for kill
+    self.exec_command(id, vec!["ps", "aux"]).await
+  }
 }
 
 #[cfg(test)]

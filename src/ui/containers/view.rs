@@ -11,7 +11,7 @@ use crate::docker::ContainerInfo;
 use crate::services;
 use crate::state::{DockerState, Selection, StateChanged, docker_state, settings_state};
 use crate::terminal::{TerminalSessionType, TerminalView};
-use crate::ui::components::detect_language_from_path;
+use crate::ui::components::{ProcessView, detect_language_from_path};
 
 use super::create_dialog::CreateContainerDialog;
 use super::detail::{ContainerDetail, ContainerDetailTab, ContainerTabState};
@@ -24,6 +24,7 @@ pub struct ContainersView {
   // View-specific state (not selection - that's in global DockerState)
   active_tab: ContainerDetailTab,
   terminal_view: Option<Entity<TerminalView>>,
+  process_view: Option<Entity<ProcessView>>,
   logs_editor: Option<Entity<InputState>>,
   inspect_editor: Option<Entity<InputState>>,
   file_content_editor: Option<Entity<InputState>>,
@@ -151,6 +152,7 @@ impl ContainersView {
       container_list,
       active_tab: ContainerDetailTab::Info,
       terminal_view: None,
+      process_view: None,
       logs_editor: None,
       inspect_editor: None,
       file_content_editor: None,
@@ -381,6 +383,7 @@ impl ContainersView {
     // Reset view-specific state but keep active_tab
     // This allows users to stay on their current tab when switching containers
     self.terminal_view = None;
+    self.process_view = None;
     self.last_synced_logs.clear();
     self.last_synced_inspect.clear();
     self.last_synced_file_content.clear();
@@ -433,6 +436,16 @@ impl ContainersView {
       let container_id = container.id.clone();
       self.terminal_view =
         Some(cx.new(|cx| TerminalView::new(TerminalSessionType::docker_exec(container_id, None), window, cx)));
+    }
+
+    // If switching to processes tab, create process view
+    if tab == ContainerDetailTab::Processes
+      && self.process_view.is_none()
+      && let Some(ref container) = self.selected_container(cx)
+      && container.state.is_running()
+    {
+      let container_id = container.id.clone();
+      self.process_view = Some(cx.new(|cx| ProcessView::for_container(container_id, window, cx)));
     }
 
     // If switching to files tab, load files
@@ -787,6 +800,7 @@ impl Render for ContainersView {
     let active_tab = self.active_tab;
     let container_tab_state = self.container_tab_state.clone();
     let terminal_view = self.terminal_view.clone();
+    let process_view = self.process_view.clone();
     let logs_editor = self.logs_editor.clone();
     let inspect_editor = self.inspect_editor.clone();
     let file_content_editor = self.file_content_editor.clone();
@@ -798,6 +812,7 @@ impl Render for ContainersView {
       .active_tab(active_tab)
       .container_state(container_tab_state)
       .terminal_view(terminal_view)
+      .process_view(process_view)
       .logs_editor(logs_editor)
       .inspect_editor(inspect_editor)
       .file_content_editor(file_content_editor)

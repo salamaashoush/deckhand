@@ -1,6 +1,6 @@
 use gpui::{App, Entity, Styled, Window, div, prelude::*, px};
 use gpui_component::{
-  Icon, Selectable, Sizable,
+  Icon, IconName, Selectable, Sizable,
   button::{Button, ButtonVariants},
   h_flex,
   input::{Input, InputState},
@@ -17,7 +17,7 @@ pub use crate::state::ContainerDetailTab;
 use crate::assets::AppIcon;
 use crate::docker::{ContainerFileEntry, ContainerInfo};
 use crate::terminal::TerminalView;
-use crate::ui::components::{FileExplorer, FileExplorerConfig, FileExplorerState};
+use crate::ui::components::{FileExplorer, FileExplorerConfig, FileExplorerState, ProcessView};
 
 type ContainerActionCallback = Rc<dyn Fn(&str, &mut Window, &mut App) + 'static>;
 type TabChangeCallback = Rc<dyn Fn(&ContainerDetailTab, &mut Window, &mut App) + 'static>;
@@ -64,6 +64,7 @@ pub struct ContainerDetail {
   active_tab: ContainerDetailTab,
   container_state: Option<ContainerTabState>,
   terminal_view: Option<Entity<TerminalView>>,
+  process_view: Option<Entity<ProcessView>>,
   logs_editor: Option<Entity<InputState>>,
   inspect_editor: Option<Entity<InputState>>,
   file_content_editor: Option<Entity<InputState>>,
@@ -87,6 +88,7 @@ impl ContainerDetail {
       active_tab: ContainerDetailTab::Info,
       container_state: None,
       terminal_view: None,
+      process_view: None,
       logs_editor: None,
       inspect_editor: None,
       file_content_editor: None,
@@ -121,6 +123,11 @@ impl ContainerDetail {
 
   pub fn terminal_view(mut self, view: Option<Entity<TerminalView>>) -> Self {
     self.terminal_view = view;
+    self
+  }
+
+  pub fn process_view(mut self, view: Option<Entity<ProcessView>>) -> Self {
+    self.process_view = view;
     self
   }
 
@@ -347,6 +354,57 @@ impl ContainerDetail {
         .text_color(colors.foreground)
         .child(logs_content),
     )
+  }
+
+  fn render_processes_tab(&self, is_running: bool, cx: &App) -> gpui::AnyElement {
+    let colors = &cx.theme().colors;
+
+    // Container must be running to show processes
+    if !is_running {
+      return v_flex()
+        .flex_1()
+        .w_full()
+        .p(px(16.))
+        .items_center()
+        .justify_center()
+        .gap(px(16.))
+        .child(
+          Icon::new(IconName::Info)
+            .size(px(48.))
+            .text_color(colors.muted_foreground),
+        )
+        .child(
+          div()
+            .text_sm()
+            .text_color(colors.muted_foreground)
+            .child("Container must be running to view processes"),
+        )
+        .into_any_element();
+    }
+
+    // If we have a process view, render it full size
+    if let Some(process_view) = &self.process_view {
+      return div()
+        .flex_1()
+        .min_h_0()
+        .w_full()
+        .child(process_view.clone())
+        .into_any_element();
+    }
+
+    // Fallback: show loading message
+    v_flex()
+      .flex_1()
+      .w_full()
+      .items_center()
+      .justify_center()
+      .child(
+        div()
+          .text_sm()
+          .text_color(colors.muted_foreground)
+          .child("Loading processes..."),
+      )
+      .into_any_element()
   }
 
   fn render_terminal_tab(&self, is_running: bool, cx: &App) -> gpui::AnyElement {
@@ -630,10 +688,13 @@ impl ContainerDetail {
           }),
       );
 
-    // Terminal, Logs, and Files tabs need full height without scroll
+    // Terminal, Logs, Processes, and Files tabs need full height without scroll
     let is_full_height_tab = matches!(
       self.active_tab,
-      ContainerDetailTab::Logs | ContainerDetailTab::Terminal | ContainerDetailTab::Files
+      ContainerDetailTab::Logs
+        | ContainerDetailTab::Processes
+        | ContainerDetailTab::Terminal
+        | ContainerDetailTab::Files
     );
 
     // Content based on active tab
@@ -648,6 +709,7 @@ impl ContainerDetail {
     if is_full_height_tab {
       let content = match self.active_tab {
         ContainerDetailTab::Logs => self.render_logs_tab(cx).into_any_element(),
+        ContainerDetailTab::Processes => self.render_processes_tab(is_running, cx),
         ContainerDetailTab::Terminal => self.render_terminal_tab(is_running, cx),
         ContainerDetailTab::Files => self.render_files_tab(is_running, window, cx),
         _ => Self::render_info_tab(container, cx).into_any_element(),

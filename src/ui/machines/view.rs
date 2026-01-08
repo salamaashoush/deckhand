@@ -10,6 +10,7 @@ use crate::colima::ColimaVm;
 use crate::services;
 use crate::state::{DockerState, MachineTabState, Selection, StateChanged, docker_state};
 use crate::terminal::TerminalView;
+use crate::ui::components::ProcessView;
 use crate::ui::dialogs;
 
 use super::detail::{MachineDetail, MachineDetailTab};
@@ -22,6 +23,7 @@ pub struct MachinesView {
   machine_list: Entity<MachineList>,
   active_tab: MachineDetailTab,
   terminal_view: Option<Entity<TerminalView>>,
+  process_view: Option<Entity<ProcessView>>,
   machine_tab_state: MachineTabState,
   logs_editor: Option<Entity<InputState>>,
   last_synced_logs: String,
@@ -121,6 +123,7 @@ impl MachinesView {
       machine_list,
       active_tab: MachineDetailTab::Info,
       terminal_view: None,
+      process_view: None,
       machine_tab_state: MachineTabState::default(),
       logs_editor: None,
       last_synced_logs: String::new(),
@@ -176,6 +179,7 @@ impl MachinesView {
     // Reset view-specific state but keep active_tab
     // This allows users to stay on their current tab when switching machines
     self.terminal_view = None;
+    self.process_view = None;
 
     // Clear synced tracking for new machine
     self.last_synced_logs.clear();
@@ -225,6 +229,19 @@ impl MachinesView {
         Some(machine.name.clone())
       };
       self.terminal_view = Some(cx.new(|cx| TerminalView::for_colima(profile, window, cx)));
+    }
+
+    // If switching to processes tab, create process view
+    if tab == MachineDetailTab::Processes
+      && self.process_view.is_none()
+      && let Some(machine) = self.selected_machine(cx)
+    {
+      let profile = if machine.name == "default" {
+        None
+      } else {
+        Some(machine.name.clone())
+      };
+      self.process_view = Some(cx.new(|cx| ProcessView::for_colima(profile, window, cx)));
     }
 
     cx.notify();
@@ -642,6 +659,7 @@ impl Render for MachinesView {
     let active_tab = self.active_tab;
     let machine_tab_state = self.machine_tab_state.clone();
     let terminal_view = self.terminal_view.clone();
+    let process_view = self.process_view.clone();
     let logs_editor = self.logs_editor.clone();
     let file_content_editor = self.file_content_editor.clone();
     let has_selection = selected_machine.is_some();
@@ -652,6 +670,7 @@ impl Render for MachinesView {
       .active_tab(active_tab)
       .machine_state(machine_tab_state)
       .terminal_view(terminal_view)
+      .process_view(process_view)
       .logs_editor(logs_editor)
       .file_content_editor(file_content_editor)
       .on_tab_change(cx.listener(|this, tab: &MachineDetailTab, window, cx| {

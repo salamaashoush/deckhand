@@ -58,7 +58,7 @@ use crate::assets::AppIcon;
 use crate::colima::ColimaVm;
 use crate::state::{MachineLogType, MachineTabState};
 use crate::terminal::TerminalView;
-use crate::ui::components::{FileExplorer, FileExplorerConfig, FileExplorerState};
+use crate::ui::components::{FileExplorer, FileExplorerConfig, FileExplorerState, ProcessView};
 
 type TabChangeCallback = Rc<dyn Fn(&MachineDetailTab, &mut Window, &mut App) + 'static>;
 type FileNavigateCallback = Rc<dyn Fn(&str, &mut Window, &mut App) + 'static>;
@@ -74,6 +74,7 @@ pub struct MachineDetail {
   active_tab: MachineDetailTab,
   machine_state: Option<MachineTabState>,
   terminal_view: Option<Entity<TerminalView>>,
+  process_view: Option<Entity<ProcessView>>,
   logs_editor: Option<Entity<InputState>>,
   file_content_editor: Option<Entity<InputState>>,
   on_tab_change: Option<TabChangeCallback>,
@@ -94,6 +95,7 @@ impl MachineDetail {
       active_tab: MachineDetailTab::Info,
       machine_state: None,
       terminal_view: None,
+      process_view: None,
       logs_editor: None,
       file_content_editor: None,
       on_tab_change: None,
@@ -125,6 +127,11 @@ impl MachineDetail {
 
   pub fn terminal_view(mut self, view: Option<Entity<TerminalView>>) -> Self {
     self.terminal_view = view;
+    self
+  }
+
+  pub fn process_view(mut self, view: Option<Entity<ProcessView>>) -> Self {
+    self.process_view = view;
     self
   }
 
@@ -713,189 +720,20 @@ impl MachineDetail {
   }
 
   fn render_processes_tab(&self, cx: &App) -> gpui::Div {
-    let colors = &cx.theme().colors;
-
-    let is_loading = self.machine_state.as_ref().is_none_or(|s| s.stats_loading);
-
-    let processes = self
-      .machine_state
-      .as_ref()
-      .map(|s| s.processes.clone())
-      .filter(|s| !s.is_empty());
-
-    if is_loading {
-      return v_flex().flex_1().w_full().items_center().justify_center().child(
-        div()
-          .text_sm()
-          .text_color(colors.muted_foreground)
-          .child("Loading processes..."),
-      );
+    // If we have a process view, render it full size
+    if let Some(process_view) = &self.process_view {
+      return div().size_full().flex_1().min_h_0().child(process_view.clone());
     }
 
-    let Some(procs) = processes else {
-      return v_flex().flex_1().w_full().items_center().justify_center().child(
-        div()
-          .text_sm()
-          .text_color(colors.muted_foreground)
-          .child("No process data available"),
-      );
-    };
+    let colors = &cx.theme().colors;
 
-    // Parse process lines
-    let lines: Vec<&str> = procs.lines().collect();
-    let _header = lines.first().copied().unwrap_or("");
-    let data_lines = lines.iter().skip(1);
-
-    div()
-      .size_full()
-      .flex()
-      .flex_col()
-      .overflow_hidden()
-      // Header row
-      .child(
-        h_flex()
-          .w_full()
-          .px(px(16.))
-          .py(px(8.))
-          .border_b_1()
-          .border_color(colors.border)
-          .bg(colors.sidebar)
-          .child(
-            div()
-              .w(px(80.))
-              .text_xs()
-              .font_weight(gpui::FontWeight::MEDIUM)
-              .text_color(colors.muted_foreground)
-              .child("USER"),
-          )
-          .child(
-            div()
-              .w(px(70.))
-              .text_xs()
-              .font_weight(gpui::FontWeight::MEDIUM)
-              .text_color(colors.muted_foreground)
-              .text_right()
-              .child("PID"),
-          )
-          .child(
-            div()
-              .w(px(70.))
-              .text_xs()
-              .font_weight(gpui::FontWeight::MEDIUM)
-              .text_color(colors.muted_foreground)
-              .text_right()
-              .child("CPU %"),
-          )
-          .child(
-            div()
-              .w(px(70.))
-              .text_xs()
-              .font_weight(gpui::FontWeight::MEDIUM)
-              .text_color(colors.muted_foreground)
-              .text_right()
-              .child("MEM %"),
-          )
-          .child(
-            div()
-              .flex_1()
-              .pl(px(16.))
-              .text_xs()
-              .font_weight(gpui::FontWeight::MEDIUM)
-              .text_color(colors.muted_foreground)
-              .child("COMMAND"),
-          ),
-      )
-      // Process rows
-      .child(
-        div()
-          .id("processes-scroll")
-          .flex_1()
-          .overflow_y_scrollbar()
-          .children(data_lines.filter_map(|line| {
-            let parts: Vec<&str> = line.split_whitespace().collect();
-            if parts.len() >= 11 {
-              let user = parts[0];
-              let pid = parts[1];
-              let cpu = parts[2];
-              let mem = parts[3];
-              let command = parts[10..].join(" ");
-
-              // Parse CPU/MEM for coloring
-              let cpu_val: f64 = cpu.parse().unwrap_or(0.0);
-              let mem_val: f64 = mem.parse().unwrap_or(0.0);
-
-              let cpu_color = if cpu_val > 50.0 {
-                colors.danger
-              } else if cpu_val > 20.0 {
-                colors.warning
-              } else {
-                colors.secondary_foreground
-              };
-
-              let mem_color = if mem_val > 50.0 {
-                colors.danger
-              } else if mem_val > 20.0 {
-                colors.warning
-              } else {
-                colors.secondary_foreground
-              };
-
-              Some(
-                h_flex()
-                  .w_full()
-                  .px(px(16.))
-                  .py(px(6.))
-                  .hover(|s| s.bg(colors.list_hover))
-                  .child(
-                    div()
-                      .w(px(80.))
-                      .text_xs()
-                      .text_color(colors.foreground)
-                      .overflow_hidden()
-                      .text_ellipsis()
-                      .child(user.to_string()),
-                  )
-                  .child(
-                    div()
-                      .w(px(70.))
-                      .text_xs()
-                      .text_color(colors.secondary_foreground)
-                      .text_right()
-                      .child(pid.to_string()),
-                  )
-                  .child(
-                    div()
-                      .w(px(70.))
-                      .text_xs()
-                      .text_color(cpu_color)
-                      .text_right()
-                      .child(cpu.to_string()),
-                  )
-                  .child(
-                    div()
-                      .w(px(70.))
-                      .text_xs()
-                      .text_color(mem_color)
-                      .text_right()
-                      .child(mem.to_string()),
-                  )
-                  .child(
-                    div()
-                      .flex_1()
-                      .pl(px(16.))
-                      .text_xs()
-                      .text_color(colors.secondary_foreground)
-                      .overflow_hidden()
-                      .text_ellipsis()
-                      .whitespace_nowrap()
-                      .child(command),
-                  ),
-              )
-            } else {
-              None
-            }
-          })),
-      )
+    // Fallback: show message when process view not yet created
+    v_flex().flex_1().w_full().items_center().justify_center().child(
+      div()
+        .text_sm()
+        .text_color(colors.muted_foreground)
+        .child("Loading processes..."),
+    )
   }
 
   fn render_stats_tab(&self, cx: &App) -> gpui::Div {
